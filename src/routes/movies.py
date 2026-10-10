@@ -7,6 +7,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Path,
     Query,
     Request,
     status,
@@ -14,9 +15,16 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from schemas import MovieListItemSchema, MovieListResponseSchema
-from services.movie_crud import count_movies, fetch_movies_page
-
+from schemas import (
+    MovieDetailSchema,
+    MovieListItemSchema,
+    MovieListResponseSchema,
+)
+from schemas.examples.movies import (
+    movie_detail_example,
+    movie_list_response_example,
+)
+from services.movie_crud import count_movies, fetch_movies_page, get_movie_record_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -37,54 +45,32 @@ router = APIRouter()
         "Returns **404** if the catalog is empty or the requested page "
         "contains no movies."
     ),
-    response_description="A page of movies with pagination information.",
+    response_description="A page of movies with pagination totals and navigation links.",
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_200_OK: {
             "content": {
-                "application/json": {
-                    "example": {
-                        "movies": [
-                            {
-                                "id": 1000,
-                                "uuid": "f82e9f31-7d9c-4f87-a403-65498d62c8c7",
-                                "name": "Inception",
-                                "year": 2010,
-                                "time": 148,
-                                "imdb": 8.8,
-                                "price": "4.99",
-                            }
-                        ],
-                        "prev_page": None,
-                        "next_page": "/api/v1/movies/?per_page=1&page=2",
-                        "total_pages": 1000,
-                        "total_items": 1000,
-                    }
-                }
-            }
-        },
-        status.HTTP_404_NOT_FOUND: {
-            "description": (
-                "The catalog is empty or the requested page has no movies."
-            ),
-            "content": {
-                "application/json": {
-                    "example": {"detail": "No movies found."}
-                }
+                "application/json": {"example": movie_list_response_example},
             },
         },
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+        status.HTTP_404_NOT_FOUND: {
+            "description": "The catalog is empty or the requested page has no movies.",
+            "content": {
+                "application/json": {"example": {"detail": "No movies found."}},
+            },
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": (
                 "Invalid pagination parameters. Page and per_page must be integers. "
                 "Page must be at least 1, and per_page must be between 1 and 20."
             ),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
-            "description": "An unexpected error occurred while loading movies.",
+            "description": "An unexpected error occurred while loading the movie catalog.",
             "content": {
                 "application/json": {
-                    "example": {"detail": "Failed to load the movie catalog."}
-                }
+                    "example": {"detail": "Failed to load the movie catalog."},
+                },
             },
         },
     },
@@ -103,9 +89,7 @@ async def movie_list(
         int,
         Query(
             title="Movies per page",
-            description=(
-                "Number of movies per page, from 1 to 20. Defaults to 10."
-            ),
+            description="Number of movies per page, from 1 to 20. Defaults to 10.",
             ge=1,
             le=20,
         ),
@@ -127,27 +111,25 @@ async def movie_list(
 
         router_path = request.url.path
 
+        params_dict = {
+            "per_page": per_page,
+            "page": page,
+        }
+
         prev_page_link = None
         if page > 1:
-            additional_params = urlencode({
-                "per_page": per_page,
-                "page": page - 1,
-            })
+            params_dict["page"] = page - 1
+            additional_params = urlencode(params_dict)
             prev_page_link = f"{router_path}?{additional_params}"
 
         next_page_link = None
         if page < total_pages:
-            additional_params = urlencode({
-                "per_page": per_page,
-                "page": page + 1,
-            })
+            params_dict["page"] = page + 1
+            additional_params = urlencode(params_dict)
             next_page_link = f"{router_path}?{additional_params}"
 
         return MovieListResponseSchema(
-            movies=[
-                MovieListItemSchema.model_validate(movie)
-                for movie in movies
-            ],
+            movies=[MovieListItemSchema.model_validate(movie) for movie in movies],
             prev_page=prev_page_link,
             next_page=next_page_link,
             total_pages=total_pages,
@@ -163,4 +145,80 @@ async def movie_list(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to load the movie catalog.",
+        )
+
+
+@router.get(
+    "/movies/{movie_id}/",
+    response_model=MovieDetailSchema,
+    name="movie-detail",
+    summary="Get movie details",
+    description=(
+        "Retrieve a movie by its ID. The response includes movie attributes, "
+        "certification, genres, stars and directors.\n\n"
+        "Returns **404** if a movie with the given ID does not exist."
+    ),
+    response_description="Detailed movie information with related entities.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {
+                "application/json": {"example": movie_detail_example},
+            },
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "A movie with the given ID was not found.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Movie with the given ID (1001) was not found.",
+                    },
+                },
+            },
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Movie ID must be an integer greater than or equal to 1.",
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "An unexpected error occurred while loading movie details.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Failed to load movie details."},
+                },
+            },
+        },
+    },
+)
+async def get_movie_by_id(
+    movie_id: Annotated[
+        int,
+        Path(
+            title="Movie ID",
+            description="ID of the movie to retrieve. Must be at least 1.",
+            ge=1,
+        ),
+    ],
+    db: AsyncSession = Depends(get_db),
+) -> MovieDetailSchema:
+    """Load a movie with its certification, genres, stars and directors."""
+    try:
+        movie = await get_movie_record_by_id(db=db, movie_id=movie_id)
+
+        if movie is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Movie with the given ID ({movie_id}) was not found.",
+            )
+
+        return MovieDetailSchema.model_validate(movie)
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Failed to load details for movie ID %s", movie_id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load movie details.",
         )
