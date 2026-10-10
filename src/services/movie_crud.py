@@ -1,19 +1,43 @@
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from database import MovieModel
 
 
+def filter_movie_query(
+    year: int | None = None,
+    imdb_min: float | None = None,
+    imdb_max: float | None = None,
+) -> Select[tuple[MovieModel]]:
+    """Build a movie query with an optional release year and inclusive IMDb bounds."""
+    query = select(MovieModel)
+
+    if year is not None:
+        query = query.where(MovieModel.year == year)
+
+    if imdb_min is not None:
+        query = query.where(MovieModel.imdb >= imdb_min)
+
+    if imdb_max is not None:
+        query = query.where(MovieModel.imdb <= imdb_max)
+
+    return query
+
+
 async def fetch_movies_page(
     db: AsyncSession,
     page: int,
     per_page: int,
+    year: int | None = None,
+    imdb_min: float | None = None,
+    imdb_max: float | None = None,
 ) -> list[MovieModel]:
-    """Fetch a movie page using the model's default ordering."""
+    """Fetch a filtered movie page using the model's default ordering."""
+    query = filter_movie_query(year=year, imdb_min=imdb_min, imdb_max=imdb_max)
+
     query = (
-        select(MovieModel)
-        .limit(per_page)
+        query.limit(per_page)
         .offset((page - 1) * per_page)
         .order_by(*MovieModel.default_order_by())
     )
@@ -23,9 +47,16 @@ async def fetch_movies_page(
     return list(result.all())
 
 
-async def count_movies(db: AsyncSession) -> int:
-    """Count all movies in the catalog."""
-    total_items = await db.scalar(select(func.count()).select_from(MovieModel))
+async def count_movies(
+    db: AsyncSession,
+    year: int | None = None,
+    imdb_min: float | None = None,
+    imdb_max: float | None = None,
+) -> int:
+    """Count all movies matching the release year and IMDb filters, without pagination."""
+    query = filter_movie_query(year=year, imdb_min=imdb_min, imdb_max=imdb_max)
+
+    total_items = await db.scalar(select(func.count()).select_from(query.subquery()))
 
     return total_items or 0
 

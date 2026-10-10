@@ -1,3 +1,5 @@
+"""Illustrative movie response examples for OpenAPI documentation."""
+
 movie_list_item_example = {
     "id": 1000,
     "uuid": "f82e9f31-7d9c-4f87-a403-65498d62c8c7",
@@ -14,6 +16,16 @@ movie_list_response_example = {
     "next_page": "/api/v1/movies/?per_page=1&page=2",
     "total_pages": 1000,
     "total_items": 1000,
+}
+
+movie_filtered_list_response_example = {
+    "movies": [movie_list_item_example],
+    "prev_page": None,
+    "next_page": (
+        "/api/v1/movies/?per_page=1&page=2" "&year=2010&imdb_min=8.0&imdb_max=9.0"
+    ),
+    "total_pages": 5,
+    "total_items": 5,
 }
 
 movie_detail_example = {
