@@ -175,7 +175,7 @@ class MovieModel(Base):
 
     @classmethod
     def default_order_by(cls):
-        return [cls.id.asc()]
+        return [cls.id.desc()]
 
     def __repr__(self) -> str:
         return f"<Movie(id={self.id}, " f"name='{self.name}', year={self.year})>"
