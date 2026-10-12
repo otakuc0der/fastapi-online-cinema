@@ -11,22 +11,35 @@ from fastapi import (
     Path,
     Query,
     Request,
+    Response,
     status,
 )
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
+from exceptions import MovieAlreadyExistsError
 from schemas import (
+    MovieBaseSchema,
+    MovieCreateSchema,
     MovieDetailSchema,
-    MovieListItemSchema,
     MovieListResponseSchema,
+    MovieUpdateSchema,
 )
 from schemas.examples.movies import (
     movie_detail_example,
     movie_filtered_list_response_example,
     movie_list_response_example,
+    movie_updated_detail_example,
 )
-from services.movie_crud import count_movies, fetch_movies_page, get_movie_record_by_id
+from services.movie_crud import (
+    count_movies,
+    create_movie_record,
+    delete_movie_record,
+    get_movie_page,
+    get_movie_record,
+    update_movie_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,43 +48,38 @@ router = APIRouter()
 
 @router.get(
     "/movies/",
-    response_model=MovieListResponseSchema,
     name="movie-list",
-    summary="Get a paginated movie catalog",
+    operation_id="list_movies",
+    response_model=MovieListResponseSchema,
+    summary="List movies",
     description=(
-        "List movies by descending ID with pagination. "
-        "Filter by exact release year and an inclusive IMDb rating range. "
-        "All provided filters apply together.\n\n"
-        "Returns matching movie and page totals. Navigation links preserve filters "
-        "and are `null` when unavailable. Returns **404** for an empty result page."
+        "Browse movies by descending ID with pagination. Filter by exact release year "
+        "and inclusive IMDb bounds; all supplied filters apply together.\n\n"
+        "The response includes matching totals and navigation links that preserve filters. "
+        "Unavailable links are null. An empty result page returns 404."
     ),
-    response_description="Movies, pagination totals and navigation links.",
+    response_description="Movie page with matching totals and navigation links.",
     status_code=status.HTTP_200_OK,
     responses={
-        status.HTTP_200_OK: {
+        200: {
             "content": {
                 "application/json": {
                     "examples": {
                         "catalog": {
                             "summary": "Without filters",
-                            "description": (
-                                "page=1, per_page=1. Illustrative data and totals."
-                            ),
+                            "description": "page=1, per_page=1. Illustrative data and totals.",
                             "value": movie_list_response_example,
                         },
                         "filtered_catalog": {
-                            "summary": "Release year and IMDb range",
-                            "description": (
-                                "page=1, per_page=1, year=2010, "
-                                "imdb_min=8, imdb_max=9. Illustrative data and totals."
-                            ),
+                            "summary": "Year and IMDb range",
+                            "description": "page=1, per_page=1, year=2010, imdb_min=8, imdb_max=9. Illustrative totals.",
                             "value": movie_filtered_list_response_example,
                         },
                     },
                 },
             },
         },
-        status.HTTP_404_NOT_FOUND: {
+        404: {
             "description": "No movies on the requested page for the selected filters.",
             "content": {
                 "application/json": {
@@ -81,14 +89,10 @@ router = APIRouter()
                 },
             },
         },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
-            "description": (
-                "Invalid parameters: integer page >= 1, integer per_page from 1 to 20, "
-                "integer year from 1900 to the current year, "
-                "and IMDb bounds from 0 to 10 with imdb_min <= imdb_max."
-            ),
+        422: {
+            "description": "Invalid pagination or filters. Year must be from 1900 to the current year; IMDb bounds must be from 0 to 10 with minimum <= maximum when both are supplied.",
         },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+        500: {
             "description": "The movie catalog could not be loaded.",
             "content": {
                 "application/json": {
@@ -100,7 +104,7 @@ router = APIRouter()
         },
     },
 )
-async def movie_list(
+async def list_movies(
     request: Request,
     year: Annotated[
         int | None,
@@ -153,7 +157,6 @@ async def movie_list(
     ] = 10,
     db: AsyncSession = Depends(get_db),
 ) -> MovieListResponseSchema:
-    """Validate filters and return a movie page with navigation links."""
     current_year = datetime.date.today().year
 
     if year is not None and year > current_year:
@@ -169,7 +172,7 @@ async def movie_list(
         )
 
     try:
-        movies = await fetch_movies_page(
+        movies = await get_movie_page(
             db=db,
             page=page,
             per_page=per_page,
@@ -218,7 +221,7 @@ async def movie_list(
             next_page_link = f"{router_path}?{additional_params}"
 
         return MovieListResponseSchema(
-            movies=[MovieListItemSchema.model_validate(movie) for movie in movies],
+            movies=[MovieBaseSchema.model_validate(movie) for movie in movies],
             prev_page=prev_page_link,
             next_page=next_page_link,
             total_pages=total_pages,
@@ -239,33 +242,39 @@ async def movie_list(
 
 @router.get(
     "/movies/{movie_id}/",
+    name="movie-get",
+    operation_id="get_movie",
     response_model=MovieDetailSchema,
-    name="movie-detail",
     summary="Get movie details",
     description=(
-        "Get a movie by ID with its certification, genres, stars and directors. "
-        "Returns **404** if the movie does not exist."
+        "Get a movie by ID, including its description, certification, genres, stars "
+        "and directors. Missing Metascore and gross revenue are returned as null. "
+        "Returns 404 when the movie does not exist."
     ),
-    response_description="Movie details and related entities.",
+    response_description="Full movie details and related entities.",
     status_code=status.HTTP_200_OK,
     responses={
-        status.HTTP_200_OK: {
-            "content": {
-                "application/json": {"example": movie_detail_example},
-            },
-        },
-        status.HTTP_404_NOT_FOUND: {
-            "description": "No movie exists with the requested ID.",
+        200: {
             "content": {
                 "application/json": {
-                    "example": {"detail": "Movie with ID 1001 was not found."},
+                    "example": movie_detail_example,
                 },
             },
         },
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+        404: {
+            "description": "No movie exists with this ID.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Movie with ID 1001 was not found.",
+                    },
+                },
+            },
+        },
+        422: {
             "description": "Movie ID must be an integer greater than or equal to 1.",
         },
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+        500: {
             "description": "Movie details could not be loaded.",
             "content": {
                 "application/json": {
@@ -277,7 +286,7 @@ async def movie_list(
         },
     },
 )
-async def get_movie_by_id(
+async def get_movie(
     movie_id: Annotated[
         int,
         Path(
@@ -288,9 +297,8 @@ async def get_movie_by_id(
     ],
     db: AsyncSession = Depends(get_db),
 ) -> MovieDetailSchema:
-    """Return a movie with its related entities."""
     try:
-        movie = await get_movie_record_by_id(db=db, movie_id=movie_id)
+        movie = await get_movie_record(db=db, movie_id=movie_id)
 
         if movie is None:
             raise HTTPException(
@@ -309,4 +317,279 @@ async def get_movie_by_id(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to load movie details. Please try again later.",
+        )
+
+
+@router.post(
+    "/movies/",
+    name="movie-create",
+    operation_id="create_movie",
+    response_model=MovieDetailSchema,
+    summary="Create a movie",
+    description=(
+        "Create a movie with certification, genres, stars and directors supplied by name. "
+        "Exact trimmed name matches are reused; missing related entities are created. "
+        "All three relation lists are required but may be empty.\n\n"
+        "ID and UUID are generated automatically. Metascore and gross revenue may be "
+        "omitted or null. Names and descriptions are trimmed; blank names, duplicate "
+        "names within a relation list and unknown fields are rejected. "
+        "A duplicate (name, year, time) combination returns 409."
+    ),
+    response_description="Created movie with generated identifiers and related entities.",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {
+            "content": {
+                "application/json": {
+                    "example": movie_detail_example,
+                },
+            },
+        },
+        409: {
+            "description": "The name, release year and duration match another movie.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "A movie with the same name, release year and duration already exists.",
+                    },
+                },
+            },
+        },
+        422: {
+            "description": "Invalid or missing fields. Year is from 1900 to the current year; duration is positive, IMDb is 0–10, Metascore is 0–100, and votes, gross and price are non-negative. Price allows eight integer digits and two decimal places. See the request schema for field limits.",
+        },
+        500: {
+            "description": "The movie could not be created or its response could not be loaded.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Unable to create the movie. Please try again later.",
+                    },
+                },
+            },
+        },
+    },
+)
+async def create_movie(
+    movie_data: MovieCreateSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MovieDetailSchema:
+    try:
+        movie = await create_movie_record(db=db, movie_data=movie_data)
+        return MovieDetailSchema.model_validate(movie)
+    except MovieAlreadyExistsError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        )
+    except Exception:
+        logger.exception("Failed to create movie '%s'", movie_data.name)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to create the movie. Please try again later.",
+        )
+
+
+@router.patch(
+    "/movies/{movie_id}/",
+    name="movie-update",
+    operation_id="update_movie",
+    response_model=MovieDetailSchema,
+    summary="Update a movie",
+    description=(
+        "Update only the supplied movie attributes. Omitted fields and related entities "
+        "remain unchanged. At least one field is required.\n\n"
+        "Only meta_score and gross accept null to clear their values. Other supplied "
+        "fields follow the creation limits. ID, UUID and relations cannot be updated "
+        "here. Returns 404 for an unknown movie and 409 if the resulting "
+        "(name, year, time) combination matches another movie."
+    ),
+    response_description="Updated movie details, including unchanged relations.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": movie_updated_detail_example,
+                },
+            },
+        },
+        404: {
+            "description": "No movie exists with this ID.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Movie with ID 1001 was not found.",
+                    },
+                },
+            },
+        },
+        409: {
+            "description": "The name, release year and duration match another movie.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "A movie with the same name, release year and duration already exists.",
+                    },
+                },
+            },
+        },
+        422: {
+            "description": "Invalid ID or update data: empty body, unknown fields, invalid values, or null supplied for a field other than meta_score or gross.",
+        },
+        500: {
+            "description": "The movie could not be updated.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Unable to update the movie. Please try again later.",
+                    },
+                },
+            },
+        },
+    },
+)
+async def update_movie(
+    movie_id: Annotated[
+        int,
+        Path(
+            title="Movie ID",
+            description="Movie ID, greater than or equal to 1.",
+            ge=1,
+        ),
+    ],
+    movie_data: MovieUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MovieDetailSchema:
+    try:
+        movie = await get_movie_record(
+            db=db,
+            movie_id=movie_id,
+        )
+
+        if movie is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Movie with ID {movie_id} was not found.",
+            )
+
+        movie = await update_movie_record(
+            db=db,
+            movie=movie,
+            movie_data=movie_data,
+        )
+
+        return MovieDetailSchema.model_validate(movie)
+
+    except HTTPException:
+        raise
+
+    except MovieAlreadyExistsError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        )
+
+    except SQLAlchemyError:
+        logger.exception("Database error while updating movie %s", movie_id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update the movie. Please try again later.",
+        )
+
+    except Exception:
+        logger.exception("Unexpected error while updating movie %s", movie_id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to update the movie. Please try again later.",
+        )
+
+
+@router.delete(
+    "/movies/{movie_id}/",
+    name="movie-delete",
+    operation_id="delete_movie",
+    response_class=Response,
+    response_model=None,
+    summary="Delete a movie",
+    description=(
+        "Delete a movie and its association rows. Certification, genres, stars and "
+        "directors remain available. Returns 204 with no response body, "
+        "or 404 when the movie does not exist."
+    ),
+    response_description="Movie deleted; no response body.",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {
+            "description": "Movie deleted successfully. The response body is empty.",
+        },
+        404: {
+            "description": "No movie exists with this ID.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Movie with ID 1001 was not found.",
+                    },
+                },
+            },
+        },
+        422: {
+            "description": "Movie ID must be an integer greater than or equal to 1.",
+        },
+        500: {
+            "description": "The movie could not be deleted.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Unable to delete the movie. Please try again later.",
+                    },
+                },
+            },
+        },
+    },
+)
+async def delete_movie(
+    movie_id: Annotated[
+        int,
+        Path(
+            title="Movie ID",
+            description="Movie ID, greater than or equal to 1.",
+            ge=1,
+        ),
+    ],
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        movie = await get_movie_record(db=db, movie_id=movie_id)
+
+        if movie is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Movie with ID {movie_id} was not found.",
+            )
+
+        await delete_movie_record(db=db, movie=movie)
+
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    except HTTPException:
+        raise
+
+    except SQLAlchemyError:
+        logger.exception("Database error while deleting movie %s", movie_id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to delete the movie. Please try again later.",
+        )
+
+    except Exception:
+        logger.exception("Unexpected error while deleting movie %s", movie_id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to delete the movie. Please try again later.",
         )
