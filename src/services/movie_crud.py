@@ -4,6 +4,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.sql.elements import UnaryExpression
 
 from database import (
     CertificationModel,
@@ -18,19 +19,96 @@ from schemas import MovieCreateSchema, MovieUpdateSchema
 type ReferenceModel = GenreModel | CertificationModel | StarModel | DirectorModel
 
 
+def build_movie_ordering(ordering: str | None = None) -> list[UnaryExpression]:
+    """Validate ordering fields and build expressions with an ID tie-breaker."""
+    sortable_fields = {
+        "id": MovieModel.id,
+        "price": MovieModel.price,
+        "year": MovieModel.year,
+        "imdb": MovieModel.imdb,
+        "votes": MovieModel.votes,
+    }
+
+    if ordering is None:
+        return MovieModel.default_order_by()
+
+    ordering_expressions = []
+    seen_fields: set[str] = set()
+
+    for item in ordering.split(","):
+        item = item.strip()
+
+        if not item:
+            raise ValueError("Each ordering item must contain a field name.")
+
+        descending = item.startswith("-")
+        field_name = item[1:] if descending else item
+
+        if field_name in seen_fields:
+            raise ValueError(f"Ordering field '{field_name}' must not be repeated.")
+
+        if field_name not in sortable_fields:
+            raise ValueError(
+                f"Unsupported ordering field '{field_name}'. "
+                "Allowed fields: id, price, year, imdb, votes."
+            )
+
+        seen_fields.add(field_name)
+        column = sortable_fields[field_name]
+        expression = column.desc() if descending else column.asc()
+        ordering_expressions.append(expression)
+
+    if "id" not in seen_fields:
+        ordering_expressions.extend(MovieModel.default_order_by())
+
+    return ordering_expressions
+
+
 def build_movie_query(
     year: int | None = None,
     imdb_min: float | None = None,
     imdb_max: float | None = None,
+    genre: str | None = None,
+    star: str | None = None,
+    director: str | None = None,
+    certification: str | None = None,
 ) -> Select[tuple[MovieModel]]:
-    """Build a movie query with an exact year and inclusive IMDb bounds."""
+    """Build a query combining year, inclusive IMDb bounds and exact name filters."""
     query = select(MovieModel)
+
     if year is not None:
         query = query.where(MovieModel.year == year)
+
     if imdb_min is not None:
         query = query.where(MovieModel.imdb >= imdb_min)
+
     if imdb_max is not None:
         query = query.where(MovieModel.imdb <= imdb_max)
+
+    if genre is not None:
+        query = query.where(
+            MovieModel.genres.any(func.lower(GenreModel.name) == genre.strip().lower())
+        )
+
+    if star is not None:
+        query = query.where(
+            MovieModel.stars.any(func.lower(StarModel.name) == star.strip().lower())
+        )
+
+    if director is not None:
+        query = query.where(
+            MovieModel.directors.any(
+                func.lower(DirectorModel.name) == director.strip().lower()
+            )
+        )
+
+    if certification is not None:
+        query = query.where(
+            MovieModel.certification.has(
+                func.lower(CertificationModel.name) == certification.strip().lower()
+            )
+        )
+
     return query
 
 
@@ -38,18 +116,34 @@ async def get_movie_page(
     db: AsyncSession,
     page: int,
     per_page: int,
+    ordering_expressions: list[UnaryExpression],
     year: int | None = None,
     imdb_min: float | None = None,
     imdb_max: float | None = None,
+    genre: str | None = None,
+    star: str | None = None,
+    director: str | None = None,
+    certification: str | None = None,
 ) -> list[MovieModel]:
-    """Fetch a filtered page using the model's default ordering."""
-    query = build_movie_query(year=year, imdb_min=imdb_min, imdb_max=imdb_max)
-    query = (
-        query.limit(per_page)
-        .offset((page - 1) * per_page)
-        .order_by(*MovieModel.default_order_by())
+    """Fetch a page matching all filters with the supplied ordering."""
+    query = build_movie_query(
+        year=year,
+        imdb_min=imdb_min,
+        imdb_max=imdb_max,
+        genre=genre,
+        star=star,
+        director=director,
+        certification=certification,
     )
+
+    query = (
+        query.order_by(*ordering_expressions)
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+    )
+
     result = await db.scalars(query)
+
     return list(result.all())
 
 
@@ -58,10 +152,24 @@ async def count_movies(
     year: int | None = None,
     imdb_min: float | None = None,
     imdb_max: float | None = None,
+    genre: str | None = None,
+    star: str | None = None,
+    director: str | None = None,
+    certification: str | None = None,
 ) -> int:
-    """Count matching movies before pagination."""
-    query = build_movie_query(year=year, imdb_min=imdb_min, imdb_max=imdb_max)
+    """Count movies matching all filters without pagination or duplicate rows."""
+    query = build_movie_query(
+        year=year,
+        imdb_min=imdb_min,
+        imdb_max=imdb_max,
+        genre=genre,
+        star=star,
+        director=director,
+        certification=certification,
+    )
+
     total_items = await db.scalar(select(func.count()).select_from(query.subquery()))
+
     return total_items or 0
 
 

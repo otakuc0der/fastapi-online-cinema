@@ -30,9 +30,12 @@ from schemas.examples.movies import (
     movie_detail_example,
     movie_filtered_list_response_example,
     movie_list_response_example,
+    movie_ordered_list_response_example,
+    movie_related_filters_response_example,
     movie_updated_detail_example,
 )
 from services.movie_crud import (
+    build_movie_ordering,
     count_movies,
     create_movie_record,
     delete_movie_record,
@@ -53,51 +56,101 @@ router = APIRouter()
     response_model=MovieListResponseSchema,
     summary="List movies",
     description=(
-        "Browse movies by descending ID with pagination. Filter by exact release year "
-        "and inclusive IMDb bounds; all supplied filters apply together.\n\n"
-        "The response includes matching totals and navigation links that preserve filters. "
-        "Unavailable links are null. An empty result page returns 404."
+        "Browse movies with pagination. Filter by exact release year, inclusive "
+        "IMDb bounds, genre, actor, director or certification. Name filters ignore "
+        "case and surrounding whitespace. All supplied filters apply together.\n\n"
+        "Use **ordering** to sort by **id**, **price**, **year**, **imdb** or "
+        "**votes** (vote count). Separate fields with commas; prefix a field "
+        "with **-** for descending order. Otherwise, ascending order applies. "
+        "Fields are applied in the specified priority order. For example, "
+        "**price,-year** sorts by price ascending, then year descending "
+        "when prices are equal. Default: **-id**. Descending ID resolves "
+        "remaining ties unless ID is explicitly supplied.\n\n"
+        "The response includes matching movie and page totals. Navigation links "
+        "preserve all filters and ordering and are null when unavailable. "
+        "An empty result page returns **404**."
     ),
     response_description="Movie page with matching totals and navigation links.",
     status_code=status.HTTP_200_OK,
     responses={
-        200: {
+        status.HTTP_200_OK: {
             "content": {
                 "application/json": {
                     "examples": {
                         "catalog": {
                             "summary": "Without filters",
-                            "description": "page=1, per_page=1. Illustrative data and totals.",
+                            "description": (
+                                "page=1, per_page=1. Default ordering: -id. "
+                                "Illustrative data and totals."
+                            ),
                             "value": movie_list_response_example,
+                        },
+                        "related_filters": {
+                            "summary": "Genre, actor, director and certification",
+                            "description": (
+                                "page=1, per_page=1, genre=Action, "
+                                "star=Leonardo DiCaprio, director=Christopher Nolan, "
+                                "certification=PG-13. All filters apply together. "
+                                "Illustrative data and totals."
+                            ),
+                            "value": movie_related_filters_response_example,
                         },
                         "filtered_catalog": {
                             "summary": "Year and IMDb range",
-                            "description": "page=1, per_page=1, year=2010, imdb_min=8, imdb_max=9. Illustrative totals.",
+                            "description": (
+                                "page=1, per_page=1, year=2010, "
+                                "imdb_min=8, imdb_max=9. "
+                                "Illustrative data and totals."
+                            ),
                             "value": movie_filtered_list_response_example,
+                        },
+                        "ordered_catalog": {
+                            "summary": "Price ascending, then year descending",
+                            "description": (
+                                "page=1, per_page=1, ordering=price,-year. "
+                                "Descending ID resolves remaining ties. "
+                                "Illustrative data and totals."
+                            ),
+                            "value": movie_ordered_list_response_example,
                         },
                     },
                 },
             },
         },
-        404: {
-            "description": "No movies on the requested page for the selected filters.",
+        status.HTTP_404_NOT_FOUND: {
+            "description": (
+                "No movies on the requested page for the selected filters."
+            ),
             "content": {
                 "application/json": {
                     "example": {
-                        "detail": "No movies found on this page for the selected filters.",
+                        "detail": (
+                            "No movies found on this page for the selected filters."
+                        ),
                     },
                 },
             },
         },
-        422: {
-            "description": "Invalid pagination or filters. Year must be from 1900 to the current year; IMDb bounds must be from 0 to 10 with minimum <= maximum when both are supplied.",
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": (
+                "Invalid parameters. Page must be an integer >= 1; per_page "
+                "an integer from 1 to 20; year an integer from 1900 to the "
+                "current year. IMDb bounds must be from 0 to 10 with "
+                "imdb_min <= imdb_max. Name filters must contain non-whitespace "
+                "text. Ordering accepts comma-separated fields: id, price, "
+                "year, imdb and votes, optionally prefixed with '-'. "
+                "Empty items, unsupported fields and repeated fields are rejected."
+            ),
         },
-        500: {
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "description": "The movie catalog could not be loaded.",
             "content": {
                 "application/json": {
                     "example": {
-                        "detail": "Unable to load the movie catalog. Please try again later.",
+                        "detail": (
+                            "Unable to load the movie catalog. "
+                            "Please try again later."
+                        ),
                     },
                 },
             },
@@ -138,6 +191,61 @@ async def list_movies(
             le=10,
         ),
     ] = None,
+    genre: Annotated[
+        str | None,
+        Query(
+            title="Genre name",
+            description=(
+                "Exact genre name, ignoring case and surrounding whitespace. Optional."
+            ),
+            examples=["Drama"],
+        ),
+    ] = None,
+    star: Annotated[
+        str | None,
+        Query(
+            title="Actor name",
+            description=(
+                "Exact actor name, ignoring case and surrounding whitespace. Optional."
+            ),
+            examples=["Tom Hanks"],
+        ),
+    ] = None,
+    director: Annotated[
+        str | None,
+        Query(
+            title="Director name",
+            description=(
+                "Exact director name, ignoring case and surrounding whitespace. Optional."
+            ),
+            examples=["Christopher Nolan"],
+        ),
+    ] = None,
+    certification: Annotated[
+        str | None,
+        Query(
+            title="Certification name",
+            description=(
+                "Exact certification name, ignoring case and surrounding whitespace. "
+                "Optional."
+            ),
+            examples=["PG-13"],
+        ),
+    ] = None,
+    ordering: Annotated[
+        str | None,
+        Query(
+            title="Movie ordering",
+            description=(
+                "Comma-separated fields in priority order: id, price, year, imdb, "
+                "votes (vote count). Ascending by default; prefix with '-' for "
+                "descending. Surrounding whitespace is ignored. Empty items and "
+                "repeated fields are rejected. Default: -id. Descending ID is added "
+                "as a final tie-breaker unless ID is supplied."
+            ),
+            examples=["price,-year", "-votes", "-imdb,price"],
+        ),
+    ] = None,
     page: Annotated[
         int,
         Query(
@@ -157,28 +265,74 @@ async def list_movies(
     ] = 10,
     db: AsyncSession = Depends(get_db),
 ) -> MovieListResponseSchema:
+    """Validate filters and ordering, then return a page with totals and navigation."""
     current_year = datetime.date.today().year
 
     if year is not None and year > current_year:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Release year cannot be later than the current year ({current_year}).",
+            detail=(
+                f"Release year cannot be later than the current year ({current_year})."
+            ),
         )
 
     if imdb_min is not None and imdb_max is not None and imdb_min > imdb_max:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Minimum IMDb rating (imdb_min) cannot be greater than maximum IMDb rating (imdb_max).",
+            detail=(
+                "Minimum IMDb rating (imdb_min) cannot be greater than "
+                "maximum IMDb rating (imdb_max)."
+            ),
         )
+
+    name_filters = {
+        "genre": genre,
+        "star": star,
+        "director": director,
+        "certification": certification,
+    }
+
+    for field_name, value in name_filters.items():
+        if value is not None:
+            cleaned_value = value.strip()
+
+            if not cleaned_value:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        f"Filter '{field_name}' must not be empty "
+                        "or contain only whitespace."
+                    ),
+                )
+
+            name_filters[field_name] = cleaned_value
+
+    genre = name_filters["genre"]
+    star = name_filters["star"]
+    director = name_filters["director"]
+    certification = name_filters["certification"]
+
+    try:
+        ordering_expressions = build_movie_ordering(ordering)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
 
     try:
         movies = await get_movie_page(
             db=db,
             page=page,
             per_page=per_page,
+            ordering_expressions=ordering_expressions,
             year=year,
             imdb_min=imdb_min,
             imdb_max=imdb_max,
+            genre=genre,
+            star=star,
+            director=director,
+            certification=certification,
         )
 
         if not movies:
@@ -188,13 +342,20 @@ async def list_movies(
             )
 
         total_items = await count_movies(
-            db=db, year=year, imdb_min=imdb_min, imdb_max=imdb_max
+            db=db,
+            year=year,
+            imdb_min=imdb_min,
+            imdb_max=imdb_max,
+            genre=genre,
+            star=star,
+            director=director,
+            certification=certification,
         )
         total_pages = math.ceil(total_items / per_page)
 
         router_path = request.url.path
 
-        params_dict: dict[str, int | float] = {
+        params_dict: dict[str, int | float | str] = {
             "per_page": per_page,
             "page": page,
         }
@@ -207,6 +368,13 @@ async def list_movies(
 
         if imdb_max is not None:
             params_dict["imdb_max"] = imdb_max
+
+        for field_name, value in name_filters.items():
+            if value is not None:
+                params_dict[field_name] = value
+
+        if ordering is not None:
+            params_dict["ordering"] = ordering
 
         prev_page_link = None
         if page > 1:

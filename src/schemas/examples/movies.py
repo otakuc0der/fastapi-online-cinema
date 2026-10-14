@@ -55,7 +55,7 @@ movie_filtered_list_response_example = {
     "movies": [movie_list_item_example],
     "prev_page": None,
     "next_page": (
-        "/api/v1/movies/?per_page=1&page=2" "&year=2010&imdb_min=8.0&imdb_max=9.0"
+        "/api/v1/movies/?per_page=1&page=2&year=2010&imdb_min=8.0&imdb_max=9.0"
     ),
     "total_pages": 5,
     "total_items": 5,
@@ -107,3 +107,25 @@ movie_detail_example = {
 movie_update_example = {"price": "6.99", "meta_score": None}
 
 movie_updated_detail_example = {**movie_detail_example, **movie_update_example}
+
+movie_related_filters_response_example = {
+    "movies": [movie_list_item_example],
+    "prev_page": None,
+    "next_page": (
+        "/api/v1/movies/?per_page=1&page=2"
+        "&genre=Action"
+        "&star=Leonardo DiCaprio"
+        "&director=Christopher Nolan"
+        "&certification=PG-13"
+    ),
+    "total_pages": 2,
+    "total_items": 2,
+}
+
+movie_ordered_list_response_example = {
+    "movies": [movie_list_item_example],
+    "prev_page": None,
+    "next_page": "/api/v1/movies/?per_page=1&page=2&ordering=price,-year",
+    "total_pages": 1000,
+    "total_items": 1000,
+}
