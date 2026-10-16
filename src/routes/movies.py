@@ -32,6 +32,7 @@ from schemas.examples.movies import (
     movie_list_response_example,
     movie_ordered_list_response_example,
     movie_related_filters_response_example,
+    movie_search_response_example,
     movie_updated_detail_example,
 )
 from services.movie_crud import (
@@ -59,15 +60,20 @@ router = APIRouter()
         "Browse movies with pagination. Filter by exact release year, inclusive "
         "IMDb bounds, genre, actor, director or certification. Name filters ignore "
         "case and surrounding whitespace. All supplied filters apply together.\n\n"
+        "Use **search** for a case-insensitive partial match in the title, "
+        "description, actor names or director names. A match in any field is "
+        "sufficient. The search text is matched as one phrase; surrounding "
+        "whitespace is ignored, and % and _ are literal characters. "
+        "Search applies together with all supplied filters.\n\n"
         "Use **ordering** to sort by **id**, **price**, **year**, **imdb** or "
         "**votes** (vote count). Separate fields with commas; prefix a field "
         "with **-** for descending order. Otherwise, ascending order applies. "
-        "Fields are applied in the specified priority order. For example, "
-        "**price,-year** sorts by price ascending, then year descending "
-        "when prices are equal. Default: **-id**. Descending ID resolves "
-        "remaining ties unless ID is explicitly supplied.\n\n"
+        "Fields are applied in priority order. For example, **price,-year** sorts "
+        "by price ascending, then year descending when prices are equal. "
+        "Default: **-id**. Descending ID resolves remaining ties unless ID "
+        "is explicitly supplied.\n\n"
         "The response includes matching movie and page totals. Navigation links "
-        "preserve all filters and ordering and are null when unavailable. "
+        "preserve filters, search and ordering and are null when unavailable. "
         "An empty result page returns **404**."
     ),
     response_description="Movie page with matching totals and navigation links.",
@@ -113,19 +119,29 @@ router = APIRouter()
                             ),
                             "value": movie_ordered_list_response_example,
                         },
+                        "search_results": {
+                            "summary": "Search by part of a movie title",
+                            "description": (
+                                "page=1, per_page=1, search=incep. "
+                                "Matches Inception by title. "
+                                "Illustrative data and totals."
+                            ),
+                            "value": movie_search_response_example,
+                        },
                     },
                 },
             },
         },
         status.HTTP_404_NOT_FOUND: {
             "description": (
-                "No movies on the requested page for the selected filters."
+                "No movies on the requested page for the supplied filters and search."
             ),
             "content": {
                 "application/json": {
                     "example": {
                         "detail": (
-                            "No movies found on this page for the selected filters."
+                            "No movies found on this page "
+                            "for the supplied filters and search."
                         ),
                     },
                 },
@@ -136,9 +152,9 @@ router = APIRouter()
                 "Invalid parameters. Page must be an integer >= 1; per_page "
                 "an integer from 1 to 20; year an integer from 1900 to the "
                 "current year. IMDb bounds must be from 0 to 10 with "
-                "imdb_min <= imdb_max. Name filters must contain non-whitespace "
-                "text. Ordering accepts comma-separated fields: id, price, "
-                "year, imdb and votes, optionally prefixed with '-'. "
+                "imdb_min <= imdb_max. Name filters and search must contain "
+                "non-whitespace text. Ordering accepts comma-separated fields: "
+                "id, price, year, imdb and votes, optionally prefixed with '-'. "
                 "Empty items, unsupported fields and repeated fields are rejected."
             ),
         },
@@ -173,7 +189,7 @@ async def list_movies(
             title="Minimum IMDb rating",
             description=(
                 "Inclusive minimum, from 0 to 10. Optional. "
-                "Must be <= imdb_max when both are provided."
+                "Must not exceed imdb_max when both are provided."
             ),
             ge=0,
             le=10,
@@ -185,7 +201,7 @@ async def list_movies(
             title="Maximum IMDb rating",
             description=(
                 "Inclusive maximum, from 0 to 10. Optional. "
-                "Must be >= imdb_min when both are provided."
+                "Must not be less than imdb_min when both are provided."
             ),
             ge=0,
             le=10,
@@ -246,6 +262,20 @@ async def list_movies(
             examples=["price,-year", "-votes", "-imdb,price"],
         ),
     ] = None,
+    search: Annotated[
+        str | None,
+        Query(
+            title="Movie search",
+            description=(
+                "Case-insensitive partial match in the title, description, actor "
+                "or director names. A match in any field is sufficient. "
+                "The text is matched as one phrase; surrounding whitespace is "
+                "ignored. % and _ are literal characters. Must not be blank. "
+                "If omitted, no text search is applied."
+            ),
+            examples=["incep", "dream", "DiCaprio", "Nolan"],
+        ),
+    ] = None,
     page: Annotated[
         int,
         Query(
@@ -265,7 +295,7 @@ async def list_movies(
     ] = 10,
     db: AsyncSession = Depends(get_db),
 ) -> MovieListResponseSchema:
-    """Validate filters and ordering, then return a page with totals and navigation."""
+    """Validate filters, search and ordering, then return a page with navigation."""
     current_year = datetime.date.today().year
 
     if year is not None and year > current_year:
@@ -320,6 +350,15 @@ async def list_movies(
             detail=str(error),
         ) from error
 
+    if search is not None:
+        search = search.strip()
+
+        if not search:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Search query must not be empty or contain only whitespace.",
+            )
+
     try:
         movies = await get_movie_page(
             db=db,
@@ -333,12 +372,16 @@ async def list_movies(
             star=star,
             director=director,
             certification=certification,
+            search=search,
         )
 
         if not movies:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No movies found on this page for the selected filters.",
+                detail=(
+                    "No movies found on this page "
+                    "for the supplied filters and search."
+                ),
             )
 
         total_items = await count_movies(
@@ -350,6 +393,7 @@ async def list_movies(
             star=star,
             director=director,
             certification=certification,
+            search=search,
         )
         total_pages = math.ceil(total_items / per_page)
 
@@ -375,6 +419,9 @@ async def list_movies(
 
         if ordering is not None:
             params_dict["ordering"] = ordering
+
+        if search is not None:
+            params_dict["search"] = search
 
         prev_page_link = None
         if page > 1:

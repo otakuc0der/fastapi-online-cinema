@@ -129,3 +129,11 @@ movie_ordered_list_response_example = {
     "total_pages": 1000,
     "total_items": 1000,
 }
+
+movie_search_response_example = {
+    "movies": [movie_list_item_example],
+    "prev_page": None,
+    "next_page": None,
+    "total_pages": 1,
+    "total_items": 1,
+}
