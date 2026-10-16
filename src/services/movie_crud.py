@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
@@ -72,8 +72,9 @@ def build_movie_query(
     star: str | None = None,
     director: str | None = None,
     certification: str | None = None,
+    search: str | None = None,
 ) -> Select[tuple[MovieModel]]:
-    """Build a query combining year, inclusive IMDb bounds and exact name filters."""
+    """Combine movie filters with partial search across titles, descriptions and names."""
     query = select(MovieModel)
 
     if year is not None:
@@ -109,6 +110,18 @@ def build_movie_query(
             )
         )
 
+    if search is not None:
+        query = query.where(
+            or_(
+                MovieModel.name.icontains(search, autoescape=True),
+                MovieModel.description.icontains(search, autoescape=True),
+                MovieModel.stars.any(StarModel.name.icontains(search, autoescape=True)),
+                MovieModel.directors.any(
+                    DirectorModel.name.icontains(search, autoescape=True)
+                ),
+            )
+        )
+
     return query
 
 
@@ -124,8 +137,9 @@ async def get_movie_page(
     star: str | None = None,
     director: str | None = None,
     certification: str | None = None,
+    search: str | None = None,
 ) -> list[MovieModel]:
-    """Fetch a page matching all filters with the supplied ordering."""
+    """Fetch a movie page matching filters and search with the supplied ordering."""
     query = build_movie_query(
         year=year,
         imdb_min=imdb_min,
@@ -134,6 +148,7 @@ async def get_movie_page(
         star=star,
         director=director,
         certification=certification,
+        search=search,
     )
 
     query = (
@@ -156,8 +171,9 @@ async def count_movies(
     star: str | None = None,
     director: str | None = None,
     certification: str | None = None,
+    search: str | None = None,
 ) -> int:
-    """Count movies matching all filters without pagination or duplicate rows."""
+    """Count movies matching filters and search before pagination."""
     query = build_movie_query(
         year=year,
         imdb_min=imdb_min,
@@ -166,6 +182,7 @@ async def count_movies(
         star=star,
         director=director,
         certification=certification,
+        search=search,
     )
 
     total_items = await db.scalar(select(func.count()).select_from(query.subquery()))
