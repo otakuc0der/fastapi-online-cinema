@@ -16,14 +16,14 @@ from pydantic import (
 from schemas.examples.movies import (
     certification_schema_example,
     director_schema_example,
-    genre_schema_example,
     movie_create_example,
     movie_detail_example,
     movie_list_item_example,
     movie_list_response_example,
     movie_update_example,
-    star_schema_example,
 )
+from schemas.genres import GenreSchema
+from schemas.stars import StarSchema
 from validators.movies import (
     validate_movie_certification,
     validate_movie_description,
@@ -66,24 +66,6 @@ class CertificationSchema(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
         json_schema_extra={"examples": [certification_schema_example]},
-    )
-    id: int
-    name: Annotated[str, Field(max_length=100)]
-
-
-class StarSchema(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_schema_extra={"examples": [star_schema_example]},
-    )
-    id: int
-    name: Annotated[str, Field(max_length=100)]
-
-
-class GenreSchema(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_schema_extra={"examples": [genre_schema_example]},
     )
     id: int
     name: Annotated[str, Field(max_length=100)]
