@@ -1,11 +1,28 @@
 from fastapi import FastAPI
 
-from routes import movie_router
+from routes import genre_router, movie_router, star_router
 
 tags_metadata = [
     {
         "name": "movies",
-        "description": "Browse the movie catalog and view movie information.",
+        "description": (
+            "Browse, search, filter and sort the movie catalog. "
+            "View movie details and manage movie records."
+        ),
+    },
+    {
+        "name": "genres",
+        "description": (
+            "Browse genres with movie counts. "
+            "View, create, rename and delete genres."
+        ),
+    },
+    {
+        "name": "stars",
+        "description": (
+            "Browse actors with pagination. "
+            "View, create, rename and delete actor records."
+        ),
     },
 ]
 
@@ -29,4 +46,16 @@ app.include_router(
     movie_router,
     prefix=api_version_prefix,
     tags=["movies"],
+)
+
+app.include_router(
+    genre_router,
+    prefix=api_version_prefix,
+    tags=["genres"],
+)
+
+app.include_router(
+    star_router,
+    prefix=api_version_prefix,
+    tags=["stars"],
 )
