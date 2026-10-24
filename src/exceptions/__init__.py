@@ -1,3 +1,3 @@
-from exceptions.movies import (
-    MovieAlreadyExistsError,
-)
+from exceptions.genres import GenreAlreadyExistsError
+from exceptions.movies import MovieAlreadyExistsError
+from exceptions.stars import StarAlreadyExistsError

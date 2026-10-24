@@ -1,16 +1,9 @@
+from schemas.examples.genres import genre_schema_example
+from schemas.examples.stars import star_schema_example
+
 certification_schema_example = {
     "id": 1,
     "name": "PG-13",
-}
-
-genre_schema_example = {
-    "id": 1,
-    "name": "Action",
-}
-
-star_schema_example = {
-    "id": 1,
-    "name": "Leonardo DiCaprio",
 }
 
 director_schema_example = {
@@ -71,9 +64,9 @@ movie_create_example = {
     "meta_score": 74.0,
     "gross": 292576195.0,
     "description": (
-        "An old-school, rebellious pilot returns to a "
-        "top flight school to train a new team of young "
-        "aviators for a dangerous, near-impossible mission."
+        "A thief who enters people's dreams "
+        "is hired to plant an idea "
+        "in the mind of a business heir."
     ),
     "certification": "PG-13",
     "genres": [

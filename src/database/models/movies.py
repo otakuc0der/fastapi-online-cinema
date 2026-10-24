@@ -83,6 +83,10 @@ class StarModel(Base):
         back_populates="stars",
     )
 
+    @classmethod
+    def default_order_by(cls):
+        return [cls.name.asc()]
+
     def __repr__(self) -> str:
         return f"<Star('{self.name}')>"
 
@@ -97,6 +101,10 @@ class GenreModel(Base):
         secondary=movie_genres,
         back_populates="genres",
     )
+
+    @classmethod
+    def default_order_by(cls):
+        return [cls.name.asc()]
 
     def __repr__(self) -> str:
         return f"<Genre(name='{self.name}')>"

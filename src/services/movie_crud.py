@@ -73,6 +73,7 @@ def build_movie_query(
     director: str | None = None,
     certification: str | None = None,
     search: str | None = None,
+    genre_id: int | None = None,
 ) -> Select[tuple[MovieModel]]:
     """Combine movie filters with partial search across titles, descriptions and names."""
     query = select(MovieModel)
@@ -122,6 +123,9 @@ def build_movie_query(
             )
         )
 
+    if genre_id is not None:
+        query = query.where(MovieModel.genres.any(GenreModel.id == genre_id))
+
     return query
 
 
@@ -138,6 +142,7 @@ async def get_movie_page(
     director: str | None = None,
     certification: str | None = None,
     search: str | None = None,
+    genre_id: int | None = None,
 ) -> list[MovieModel]:
     """Fetch a movie page matching filters and search with the supplied ordering."""
     query = build_movie_query(
@@ -149,6 +154,7 @@ async def get_movie_page(
         director=director,
         certification=certification,
         search=search,
+        genre_id=genre_id,
     )
 
     query = (
@@ -172,6 +178,7 @@ async def count_movies(
     director: str | None = None,
     certification: str | None = None,
     search: str | None = None,
+    genre_id: int | None = None,
 ) -> int:
     """Count movies matching filters and search before pagination."""
     query = build_movie_query(
@@ -183,6 +190,7 @@ async def count_movies(
         director=director,
         certification=certification,
         search=search,
+        genre_id=genre_id,
     )
 
     total_items = await db.scalar(select(func.count()).select_from(query.subquery()))
@@ -225,8 +233,10 @@ async def movie_exists(
 async def get_or_create_named_entity(
     db: AsyncSession, model: type[ReferenceModel], name: str
 ) -> Any:
-    """Get an exact name match or flush a new entity without committing."""
-    entity = await db.scalar(select(model).where(model.name == name))
+    """Find an exact name ignoring case or flush a new entity without committing."""
+    entity = await db.scalar(
+        select(model).where(func.lower(model.name) == name.lower())
+    )
     if entity is not None:
         return entity
     new_entity = model(name=name)
@@ -240,11 +250,26 @@ async def get_or_create_named_entities(
     model: type[ReferenceModel],
     names: list[str],
 ) -> list[Any]:
-    """Resolve related names sequentially within the caller's transaction."""
-    return [
-        await get_or_create_named_entity(db=db, model=model, name=name)
-        for name in names
-    ]
+    """Resolve unique names ignoring case preserving order without committing."""
+    entities = []
+    seen_names: set[str] = set()
+
+    for name in names:
+        normalized_name = name.lower()
+
+        if normalized_name in seen_names:
+            continue
+
+        entity = await get_or_create_named_entity(
+            db=db,
+            model=model,
+            name=name,
+        )
+
+        entities.append(entity)
+        seen_names.add(normalized_name)
+
+    return entities
 
 
 async def create_movie_record(
