@@ -38,17 +38,25 @@ def validate_movie_certification(value: object) -> str:
 
 
 def validate_related_names(values: list[str]) -> list[str]:
-    """Trim related names and reject blank, overlong or duplicate entries."""
+    """Trim names and reject blank overlong or case-insensitive duplicates."""
     cleaned_names: list[str] = []
     seen_names: set[str] = set()
+
     for value in values:
         name = value.strip()
+
         if not name:
             raise ValueError("Names must not be empty or contain only whitespace.")
+
         if len(name) > 100:
             raise ValueError("Each name must be at most 100 characters long.")
-        if name in seen_names:
+
+        normalized_name = name.lower()
+
+        if normalized_name in seen_names:
             raise ValueError(f"Duplicate name: '{name}'.")
-        seen_names.add(name)
+
+        seen_names.add(normalized_name)
         cleaned_names.append(name)
+
     return cleaned_names

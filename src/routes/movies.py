@@ -149,13 +149,15 @@ router = APIRouter()
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": (
-                "Invalid parameters. Page must be an integer >= 1; per_page "
-                "an integer from 1 to 20; year an integer from 1900 to the "
-                "current year. IMDb bounds must be from 0 to 10 with "
-                "imdb_min <= imdb_max. Name filters and search must contain "
-                "non-whitespace text. Ordering accepts comma-separated fields: "
-                "id, price, year, imdb and votes, optionally prefixed with '-'. "
-                "Empty items, unsupported fields and repeated fields are rejected."
+                "Invalid parameters. Page and genre_id must be integers greater than "
+                "or equal to 1. Per_page must be an integer from 1 to 20. "
+                "Year must be an integer from 1900 to the current year. "
+                "IMDb bounds must be numbers from 0 to 10. When both are supplied, "
+                "imdb_min must not exceed imdb_max. "
+                "Name filters and search must contain non-whitespace text. "
+                "Ordering accepts comma-separated fields: id, price, year, imdb and votes, "
+                "optionally prefixed with '-' for descending order. "
+                "Empty ordering items, unsupported fields and repeated fields are rejected."
             ),
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
@@ -205,6 +207,20 @@ async def list_movies(
             ),
             ge=0,
             le=10,
+        ),
+    ] = None,
+    genre_id: Annotated[
+        int | None,
+        Query(
+            title="Genre ID",
+            description=(
+                "Filter movies by an associated genre ID. Must be at least 1. "
+                "Combines with all other filters. If genre is also supplied, "
+                "both conditions must match, possibly through different genres. "
+                "An unknown ID or no matching movies returns 404."
+            ),
+            ge=1,
+            examples=[1],
         ),
     ] = None,
     genre: Annotated[
@@ -373,6 +389,7 @@ async def list_movies(
             director=director,
             certification=certification,
             search=search,
+            genre_id=genre_id,
         )
 
         if not movies:
@@ -394,6 +411,7 @@ async def list_movies(
             director=director,
             certification=certification,
             search=search,
+            genre_id=genre_id,
         )
         total_pages = math.ceil(total_items / per_page)
 
@@ -422,6 +440,9 @@ async def list_movies(
 
         if search is not None:
             params_dict["search"] = search
+
+        if genre_id is not None:
+            params_dict["genre_id"] = genre_id
 
         prev_page_link = None
         if page > 1:
@@ -543,12 +564,16 @@ async def get_movie(
     summary="Create a movie",
     description=(
         "Create a movie with certification, genres, stars and directors supplied by name. "
-        "Exact trimmed name matches are reused; missing related entities are created. "
-        "All three relation lists are required but may be empty.\n\n"
-        "ID and UUID are generated automatically. Metascore and gross revenue may be "
-        "omitted or null. Names and descriptions are trimmed; blank names, duplicate "
-        "names within a relation list and unknown fields are rejected. "
-        "A duplicate (name, year, time) combination returns 409."
+        "Related names are trimmed and matched without regard to case. "
+        "Existing entities are reused, and missing entities are created. "
+        "Genres, stars and directors lists are required but may be empty.\n\n"
+        "ID and UUID are generated automatically. Meta_score and gross may be "
+        "omitted or null. The movie name and description are trimmed and must not "
+        "be blank. Related names must contain 1–100 characters after trimming. "
+        "Duplicate names within each relation list are rejected regardless of case. "
+        "Unknown request fields are rejected.\n\n"
+        "A duplicate (name, year, time) combination returns 409. "
+        "Movie names are compared case-sensitively for this check."
     ),
     response_description="Created movie with generated identifiers and related entities.",
     status_code=status.HTTP_201_CREATED,
@@ -571,7 +596,17 @@ async def get_movie(
             },
         },
         422: {
-            "description": "Invalid or missing fields. Year is from 1900 to the current year; duration is positive, IMDb is 0–10, Metascore is 0–100, and votes, gross and price are non-negative. Price allows eight integer digits and two decimal places. See the request schema for field limits.",
+            "description": (
+                "Invalid or missing fields. Year must be from 1900 to the current year. "
+                "Duration must be positive. IMDb must be from 0 to 10, and meta_score "
+                "from 0 to 100. Votes, gross and price must be non-negative. "
+                "Price allows up to eight integer digits and two decimal places. "
+                "Movie name must contain 1–250 characters after trimming. "
+                "Description must not be blank. Related names must contain "
+                "1–100 characters after trimming. Duplicate names within each relation "
+                "list are rejected regardless of case. Unknown fields are rejected. "
+                "Only meta_score and gross accept null."
+            ),
         },
         500: {
             "description": "The movie could not be created or its response could not be loaded.",
