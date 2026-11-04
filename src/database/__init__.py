@@ -1,5 +1,14 @@
 from database.models.base import Base
 
+from database.models.accounts import (
+    ActivationTokenModel,
+    PasswordResetTokenModel,
+    RefreshTokenModel,
+    UserGroupEnum,
+    UserGroupModel,
+    UserModel,
+    UserProfileModel,
+)
 from database.models.movies import (
     CertificationModel,
     DirectorModel,
@@ -10,8 +19,7 @@ from database.models.movies import (
     movie_genres,
     movie_stars,
 )
-
 from database.session_postgresql import (
-    get_postgresql_db_contextmanager as get_db_contextmanager,
     get_postgresql_db as get_db,
+    get_postgresql_db_contextmanager as get_db_contextmanager,
 )
