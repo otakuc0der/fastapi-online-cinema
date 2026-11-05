@@ -50,6 +50,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def normalize_optional_text(
+    value: str | None,
+    error_message: str,
+) -> str | None:
+    if value is None:
+        return None
+
+    cleaned_value = value.strip()
+
+    if not cleaned_value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=error_message,
+        )
+
+    return cleaned_value
+
+
 @router.get(
     "/movies/",
     name="movie-list",
@@ -332,26 +350,20 @@ async def list_movies(
         )
 
     name_filters = {
-        "genre": genre,
-        "star": star,
-        "director": director,
-        "certification": certification,
+        field_name: normalize_optional_text(
+            value,
+            error_message=(
+                f"Filter '{field_name}' must not be empty "
+                "or contain only whitespace."
+            ),
+        )
+        for field_name, value in {
+            "genre": genre,
+            "star": star,
+            "director": director,
+            "certification": certification,
+        }.items()
     }
-
-    for field_name, value in name_filters.items():
-        if value is not None:
-            cleaned_value = value.strip()
-
-            if not cleaned_value:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail=(
-                        f"Filter '{field_name}' must not be empty "
-                        "or contain only whitespace."
-                    ),
-                )
-
-            name_filters[field_name] = cleaned_value
 
     genre = name_filters["genre"]
     star = name_filters["star"]
@@ -366,14 +378,10 @@ async def list_movies(
             detail=str(error),
         ) from error
 
-    if search is not None:
-        search = search.strip()
-
-        if not search:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Search query must not be empty or contain only whitespace.",
-            )
+    search = normalize_optional_text(
+        search,
+        error_message="Search query must not be empty or contain only whitespace.",
+    )
 
     try:
         movies = await get_movie_page(
@@ -417,32 +425,21 @@ async def list_movies(
 
         router_path = request.url.path
 
-        params_dict: dict[str, int | float | str] = {
+        query_params = {
             "per_page": per_page,
             "page": page,
+            "year": year,
+            "imdb_min": imdb_min,
+            "imdb_max": imdb_max,
+            **name_filters,
+            "ordering": ordering,
+            "search": search,
+            "genre_id": genre_id,
         }
 
-        if year is not None:
-            params_dict["year"] = year
-
-        if imdb_min is not None:
-            params_dict["imdb_min"] = imdb_min
-
-        if imdb_max is not None:
-            params_dict["imdb_max"] = imdb_max
-
-        for field_name, value in name_filters.items():
-            if value is not None:
-                params_dict[field_name] = value
-
-        if ordering is not None:
-            params_dict["ordering"] = ordering
-
-        if search is not None:
-            params_dict["search"] = search
-
-        if genre_id is not None:
-            params_dict["genre_id"] = genre_id
+        params_dict: dict[str, int | float | str] = {
+            key: value for key, value in query_params.items() if value is not None
+        }
 
         prev_page_link = None
         if page > 1:
@@ -686,7 +683,11 @@ async def create_movie(
             },
         },
         422: {
-            "description": "Invalid ID or update data: empty body, unknown fields, invalid values, or null supplied for a field other than meta_score or gross.",
+            "description": (
+                "Invalid ID or update data: empty body, unknown fields, "
+                "invalid values, or null supplied for a field other than "
+                "meta_score or gross."
+            ),
         },
         500: {
             "description": "The movie could not be updated.",
