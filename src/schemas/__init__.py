@@ -1,3 +1,17 @@
+from schemas.accounts import (
+    MessageResponseSchema,
+    PasswordChangeRequestSchema,
+    PasswordResetCompleteRequestSchema,
+    PasswordResetRequestSchema,
+    TokenRefreshRequestSchema,
+    TokenRefreshResponseSchema,
+    UserActivationRequestSchema,
+    UserActivationResendRequestSchema,
+    UserLoginRequestSchema,
+    UserLoginResponseSchema,
+    UserRegistrationRequestSchema,
+    UserRegistrationResponseSchema,
+)
 from schemas.genres import (
     GenreCreateSchema,
     GenreListItemSchema,

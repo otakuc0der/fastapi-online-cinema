@@ -23,3 +23,4 @@ from database.session_postgresql import (
     get_postgresql_db as get_db,
     get_postgresql_db_contextmanager as get_db_contextmanager,
 )
+from database.validators import accounts as accounts_validators
