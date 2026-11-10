@@ -1,3 +1,7 @@
+from exceptions.accounts import (
+    UserAlreadyExistsError,
+    UserGroupNotFoundError,
+)
 from exceptions.genres import GenreAlreadyExistsError
 from exceptions.movies import MovieAlreadyExistsError
 from exceptions.security import (

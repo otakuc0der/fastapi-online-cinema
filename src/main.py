@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 
-from routes import genre_router, movie_router, star_router
+from routes import (
+    account_router,
+    genre_router,
+    movie_router,
+    star_router,
+)
 
 tags_metadata = [
     {
@@ -23,6 +28,10 @@ tags_metadata = [
             "Browse actors with pagination. "
             "View, create, rename and delete actor records."
         ),
+    },
+    {
+        "name": "accounts",
+        "description": "Register user accounts with email and password.",
     },
 ]
 
@@ -58,4 +67,10 @@ app.include_router(
     star_router,
     prefix=api_version_prefix,
     tags=["stars"],
+)
+
+app.include_router(
+    account_router,
+    prefix=f"{api_version_prefix}/accounts",
+    tags=["accounts"],
 )
