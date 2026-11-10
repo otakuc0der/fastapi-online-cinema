@@ -17,3 +17,15 @@ class UserAlreadyExistsError(BaseAccountError):
     """The provided email belongs to an existing account."""
 
     default_message = "A user with this email already exists."
+
+
+class InvalidActivationTokenError(BaseAccountError):
+    """The activation token is invalid, expired or belongs to another account."""
+
+    default_message = "Invalid or expired activation token."
+
+
+class UserAlreadyActiveError(BaseAccountError):
+    """The account has already been activated."""
+
+    default_message = "User account is already active."
