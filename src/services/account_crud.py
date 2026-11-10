@@ -17,6 +17,8 @@ from database.models.accounts import TokenBaseModel
 from exceptions import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
+    InvalidTokenError,
+    TokenExpiredError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
@@ -94,6 +96,17 @@ async def get_activation_token_by_user_id(
         select(ActivationTokenModel)
         .where(ActivationTokenModel.user_id == user_id)
         .with_for_update(of=ActivationTokenModel)
+    )
+
+
+async def get_refresh_token(
+    db: AsyncSession,
+    token: str,
+) -> RefreshTokenModel | None:
+    return await db.scalar(
+        select(RefreshTokenModel)
+        .options(joinedload(RefreshTokenModel.user))
+        .where(RefreshTokenModel.token == token)
     )
 
 
@@ -299,3 +312,54 @@ async def login_user(
     except Exception:
         await db.rollback()
         raise
+
+
+async def refresh_access_token(
+    db: AsyncSession,
+    refresh_token: str,
+    jwt_manager: JWTAuthManagerInterface,
+) -> str:
+    payload = jwt_manager.decode_refresh_token(
+        token=refresh_token,
+    )
+    subject = payload.get("sub")
+
+    if not isinstance(subject, str) or not subject.isascii() or not subject.isdigit():
+        raise InvalidTokenError(
+            "Refresh token must contain a numeric user ID in the 'sub' claim."
+        )
+
+    user_id = int(subject)
+
+    if user_id <= 0:
+        raise InvalidTokenError(
+            "User ID in the refresh token must be a positive integer."
+        )
+
+    token_record = await get_refresh_token(
+        db=db,
+        token=refresh_token,
+    )
+
+    if token_record is None:
+        raise InvalidTokenError("Refresh token was not found or has been revoked.")
+
+    if token_record.user_id != user_id:
+        raise InvalidTokenError("Refresh token owner does not match its 'sub' claim.")
+
+    if get_token_expires_at(token_record) <= datetime.now(timezone.utc):
+        raise TokenExpiredError("Refresh token has expired.")
+
+    user = token_record.user
+
+    if user is None:
+        raise InvalidTokenError(
+            "The user associated with the refresh token no longer exists."
+        )
+
+    if not user.is_active:
+        raise UserNotActiveError()
+
+    return jwt_manager.create_access_token(
+        data={"sub": str(user.id)},
+    )
