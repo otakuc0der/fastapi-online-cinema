@@ -24,7 +24,9 @@ async def get_user_group_by_name(
     group_name: UserGroupEnum,
 ) -> UserGroupModel | None:
     return await db.scalar(
-        select(UserGroupModel).where(UserGroupModel.name == group_name)
+        select(UserGroupModel).where(
+            UserGroupModel.name == group_name,
+        )
     )
 
 
@@ -32,18 +34,23 @@ async def register_user(
     db: AsyncSession,
     email: str,
     raw_password: str,
-) -> UserModel:
+) -> tuple[UserModel, ActivationTokenModel]:
     try:
         email = accounts_validators.validate_email(email)
 
         user = await get_user_by_email(db=db, email=email)
-        if user:
+
+        if user is not None:
             raise UserAlreadyExistsError(
                 f"A user with this email {email} already exists."
             )
 
-        group = await get_user_group_by_name(db=db, group_name=UserGroupEnum.USER)
-        if not group:
+        group = await get_user_group_by_name(
+            db=db,
+            group_name=UserGroupEnum.USER,
+        )
+
+        if group is None:
             raise UserGroupNotFoundError("Default user group was not found.")
 
         new_user = UserModel.create(
@@ -55,17 +62,23 @@ async def register_user(
         db.add(new_user)
         await db.flush()
 
-        activation_token = ActivationTokenModel(user_id=new_user.id)
+        activation_token = ActivationTokenModel(
+            user_id=new_user.id,
+        )
         db.add(activation_token)
 
         await db.commit()
 
-        return new_user
+        return new_user, activation_token
 
     except IntegrityError as error:
         await db.rollback()
 
-        constraint_name = getattr(error.orig.__cause__, "constraint_name", None)
+        constraint_name = getattr(
+            error.orig.__cause__,
+            "constraint_name",
+            None,
+        )
 
         if constraint_name == "ix_users_email":
             raise UserAlreadyExistsError(

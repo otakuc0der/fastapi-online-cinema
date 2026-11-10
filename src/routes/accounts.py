@@ -26,8 +26,10 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ) -> UserRegistrationResponseSchema:
     try:
-        user = await register_user(
-            db=db, email=str(user_data.email), raw_password=user_data.password
+        user, _ = await register_user(
+            db=db,
+            email=str(user_data.email),
+            raw_password=user_data.password,
         )
 
         return UserRegistrationResponseSchema.model_validate(user)
