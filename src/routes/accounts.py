@@ -3,22 +3,30 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import get_jwt_auth_manager, get_settings
+from config.settings import Settings
 from database import get_db
 from exceptions import (
     InvalidActivationTokenError,
+    InvalidCredentialsError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
+    UserNotActiveError,
 )
 from schemas.accounts import (
     MessageResponseSchema,
     UserActivationRequestSchema,
     UserActivationResendRequestSchema,
+    UserLoginRequestSchema,
+    UserLoginResponseSchema,
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
+from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
+    login_user as login_user_service,
     register_user,
     renew_activation_token,
 )
@@ -129,4 +137,50 @@ async def resend_activation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while requesting account activation.",
+        ) from error
+
+
+@router.post(
+    "/login/",
+    response_model=UserLoginResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def login_user(
+    login_data: UserLoginRequestSchema,
+    db: AsyncSession = Depends(get_db),
+    jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
+    settings: Settings = Depends(get_settings),
+) -> UserLoginResponseSchema:
+    try:
+        access_token, refresh_token = await login_user_service(
+            db=db,
+            email=str(login_data.email),
+            raw_password=login_data.password,
+            jwt_manager=jwt_manager,
+            refresh_token_days=settings.REFRESH_TOKEN_DAYS,
+        )
+
+        return UserLoginResponseSchema(
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+
+    except InvalidCredentialsError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(error),
+        ) from error
+
+    except UserNotActiveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Failed to log in user")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during login.",
         ) from error
