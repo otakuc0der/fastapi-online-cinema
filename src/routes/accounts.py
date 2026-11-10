@@ -4,12 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from exceptions import UserAlreadyExistsError, UserGroupNotFoundError
+from exceptions import (
+    InvalidActivationTokenError,
+    UserAlreadyActiveError,
+    UserAlreadyExistsError,
+    UserGroupNotFoundError,
+)
 from schemas.accounts import (
+    MessageResponseSchema,
+    UserActivationRequestSchema,
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
-from services.account_crud import register_user
+from services.account_crud import activate_user, register_user
 
 logger = logging.getLogger(__name__)
 
@@ -54,4 +61,37 @@ async def register(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during user creation.",
+        ) from error
+
+
+@router.post(
+    "/activate/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def activate_account(
+    activation_data: UserActivationRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await activate_user(
+            db=db,
+            email=str(activation_data.email),
+            token=activation_data.token,
+        )
+
+        return MessageResponseSchema(message="User account activated successfully.")
+
+    except (InvalidActivationTokenError, UserAlreadyActiveError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Failed to activate user account")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during account activation.",
         ) from error
