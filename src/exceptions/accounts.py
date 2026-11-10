@@ -4,9 +4,7 @@ class BaseAccountError(Exception):
     default_message = "An account error occurred."
 
     def __init__(self, message: str | None = None) -> None:
-        super().__init__(
-            self.default_message if message is None else message
-        )
+        super().__init__(self.default_message if message is None else message)
 
 
 class UserGroupNotFoundError(BaseAccountError):
