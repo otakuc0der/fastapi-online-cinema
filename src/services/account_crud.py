@@ -7,6 +7,7 @@ from sqlalchemy.orm import joinedload
 
 from database import (
     ActivationTokenModel,
+    RefreshTokenModel,
     UserGroupEnum,
     UserGroupModel,
     UserModel,
@@ -15,10 +16,13 @@ from database import (
 from database.models.accounts import TokenBaseModel
 from exceptions import (
     InvalidActivationTokenError,
+    InvalidCredentialsError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
+    UserNotActiveError,
 )
+from security.interfaces import JWTAuthManagerInterface
 from services.utils import generate_secure_token
 
 
@@ -241,6 +245,56 @@ async def renew_activation_token(
         await db.commit()
 
         return token_record
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def login_user(
+    db: AsyncSession,
+    email: str,
+    raw_password: str,
+    jwt_manager: JWTAuthManagerInterface,
+    refresh_token_days: int,
+) -> tuple[str, str]:
+    try:
+        email = accounts_validators.validate_email(email)
+
+        user = await get_user_by_email_for_update(
+            db=db,
+            email=email,
+        )
+
+        if user is None:
+            raise InvalidCredentialsError()
+
+        if not user.verify_password(raw_password):
+            raise InvalidCredentialsError()
+
+        if not user.is_active:
+            raise UserNotActiveError()
+
+        data_to_encode = {"sub": str(user.id)}
+
+        access_token = jwt_manager.create_access_token(
+            data=data_to_encode,
+        )
+        refresh_token = jwt_manager.create_refresh_token(
+            data=data_to_encode,
+            expires_delta=timedelta(days=refresh_token_days),
+        )
+
+        refresh_token_record = RefreshTokenModel.create(
+            user_id=user.id,
+            days_valid=refresh_token_days,
+            token=refresh_token,
+        )
+        db.add(refresh_token_record)
+
+        await db.commit()
+
+        return access_token, refresh_token
 
     except Exception:
         await db.rollback()
