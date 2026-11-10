@@ -3,22 +3,37 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import get_jwt_auth_manager, get_settings
+from config.settings import Settings
 from database import get_db
 from exceptions import (
     InvalidActivationTokenError,
+    InvalidCredentialsError,
+    InvalidTokenError,
+    TokenExpiredError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
+    UserNotActiveError,
 )
 from schemas.accounts import (
     MessageResponseSchema,
+    TokenRefreshRequestSchema,
+    TokenRefreshResponseSchema,
     UserActivationRequestSchema,
     UserActivationResendRequestSchema,
+    UserLoginRequestSchema,
+    UserLoginResponseSchema,
+    UserLogoutRequestSchema,
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
+from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
+    login_user as login_user_service,
+    logout_user,
+    refresh_access_token,
     register_user,
     renew_activation_token,
 )
@@ -129,4 +144,124 @@ async def resend_activation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while requesting account activation.",
+        ) from error
+
+
+@router.post(
+    "/login/",
+    response_model=UserLoginResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def login_user(
+    login_data: UserLoginRequestSchema,
+    db: AsyncSession = Depends(get_db),
+    jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
+    settings: Settings = Depends(get_settings),
+) -> UserLoginResponseSchema:
+    try:
+        access_token, refresh_token = await login_user_service(
+            db=db,
+            email=str(login_data.email),
+            raw_password=login_data.password,
+            jwt_manager=jwt_manager,
+            refresh_token_days=settings.REFRESH_TOKEN_DAYS,
+        )
+
+        return UserLoginResponseSchema(
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+
+    except InvalidCredentialsError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(error),
+        ) from error
+
+    except UserNotActiveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Failed to log in user")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during login.",
+        ) from error
+
+
+@router.post(
+    "/refresh/",
+    response_model=TokenRefreshResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def refresh_token(
+    refresh_token_data: TokenRefreshRequestSchema,
+    db: AsyncSession = Depends(get_db),
+    jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
+) -> TokenRefreshResponseSchema:
+    try:
+        access_token = await refresh_access_token(
+            db=db,
+            refresh_token=refresh_token_data.refresh_token,
+            jwt_manager=jwt_manager,
+        )
+
+        return TokenRefreshResponseSchema(
+            access_token=access_token,
+        )
+
+    except TokenExpiredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has expired.",
+        ) from error
+
+    except InvalidTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token.",
+        ) from error
+
+    except UserNotActiveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Failed to refresh access token")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while refreshing the access token.",
+        ) from error
+
+
+@router.post(
+    "/logout/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def logout(
+    logout_data: UserLogoutRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await logout_user(
+            db=db,
+            refresh_token=logout_data.refresh_token,
+        )
+
+        return MessageResponseSchema(message="User logged out successfully.")
+
+    except Exception as error:
+        logger.exception("Failed to log out user")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during logout.",
         ) from error

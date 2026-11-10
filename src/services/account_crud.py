@@ -7,6 +7,7 @@ from sqlalchemy.orm import joinedload
 
 from database import (
     ActivationTokenModel,
+    RefreshTokenModel,
     UserGroupEnum,
     UserGroupModel,
     UserModel,
@@ -15,10 +16,15 @@ from database import (
 from database.models.accounts import TokenBaseModel
 from exceptions import (
     InvalidActivationTokenError,
+    InvalidCredentialsError,
+    InvalidTokenError,
+    TokenExpiredError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
+    UserNotActiveError,
 )
+from security.interfaces import JWTAuthManagerInterface
 from services.utils import generate_secure_token
 
 
@@ -90,6 +96,17 @@ async def get_activation_token_by_user_id(
         select(ActivationTokenModel)
         .where(ActivationTokenModel.user_id == user_id)
         .with_for_update(of=ActivationTokenModel)
+    )
+
+
+async def get_refresh_token(
+    db: AsyncSession,
+    token: str,
+) -> RefreshTokenModel | None:
+    return await db.scalar(
+        select(RefreshTokenModel)
+        .options(joinedload(RefreshTokenModel.user))
+        .where(RefreshTokenModel.token == token)
     )
 
 
@@ -241,6 +258,129 @@ async def renew_activation_token(
         await db.commit()
 
         return token_record
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def login_user(
+    db: AsyncSession,
+    email: str,
+    raw_password: str,
+    jwt_manager: JWTAuthManagerInterface,
+    refresh_token_days: int,
+) -> tuple[str, str]:
+    try:
+        email = accounts_validators.validate_email(email)
+
+        user = await get_user_by_email_for_update(
+            db=db,
+            email=email,
+        )
+
+        if user is None:
+            raise InvalidCredentialsError()
+
+        if not user.verify_password(raw_password):
+            raise InvalidCredentialsError()
+
+        if not user.is_active:
+            raise UserNotActiveError()
+
+        data_to_encode = {"sub": str(user.id)}
+
+        access_token = jwt_manager.create_access_token(
+            data=data_to_encode,
+        )
+        refresh_token = jwt_manager.create_refresh_token(
+            data=data_to_encode,
+            expires_delta=timedelta(days=refresh_token_days),
+        )
+
+        refresh_token_record = RefreshTokenModel.create(
+            user_id=user.id,
+            days_valid=refresh_token_days,
+            token=refresh_token,
+        )
+        db.add(refresh_token_record)
+
+        await db.commit()
+
+        return access_token, refresh_token
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def refresh_access_token(
+    db: AsyncSession,
+    refresh_token: str,
+    jwt_manager: JWTAuthManagerInterface,
+) -> str:
+    payload = jwt_manager.decode_refresh_token(
+        token=refresh_token,
+    )
+    subject = payload.get("sub")
+
+    if not isinstance(subject, str) or not subject.isascii() or not subject.isdigit():
+        raise InvalidTokenError(
+            "Refresh token must contain a numeric user ID in the 'sub' claim."
+        )
+
+    user_id = int(subject)
+
+    if user_id <= 0:
+        raise InvalidTokenError(
+            "User ID in the refresh token must be a positive integer."
+        )
+
+    token_record = await get_refresh_token(
+        db=db,
+        token=refresh_token,
+    )
+
+    if token_record is None:
+        raise InvalidTokenError("Refresh token was not found or has been revoked.")
+
+    if token_record.user_id != user_id:
+        raise InvalidTokenError("Refresh token owner does not match its 'sub' claim.")
+
+    if get_token_expires_at(token_record) <= datetime.now(timezone.utc):
+        raise TokenExpiredError("Refresh token has expired.")
+
+    user = token_record.user
+
+    if user is None:
+        raise InvalidTokenError(
+            "The user associated with the refresh token no longer exists."
+        )
+
+    if not user.is_active:
+        raise UserNotActiveError()
+
+    return jwt_manager.create_access_token(
+        data={"sub": str(user.id)},
+    )
+
+
+async def logout_user(
+    db: AsyncSession,
+    refresh_token: str,
+) -> None:
+    try:
+        token_record = await get_refresh_token(
+            db=db,
+            token=refresh_token,
+        )
+
+        if token_record is None:
+            await db.rollback()
+            return
+
+        await db.delete(token_record)
+        await db.commit()
 
     except Exception:
         await db.rollback()

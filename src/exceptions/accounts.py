@@ -29,3 +29,15 @@ class UserAlreadyActiveError(BaseAccountError):
     """The account has already been activated."""
 
     default_message = "User account is already active."
+
+
+class InvalidCredentialsError(BaseAccountError):
+    """The supplied login credentials are incorrect."""
+
+    default_message = "Invalid email or password."
+
+
+class UserNotActiveError(BaseAccountError):
+    """The requested operation requires an active account."""
+
+    default_message = "User account is not activated."

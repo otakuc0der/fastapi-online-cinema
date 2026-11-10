@@ -84,12 +84,20 @@ class UserLoginResponseSchema(BaseModel):
     token_type: str = "bearer"
 
 
-class TokenRefreshRequestSchema(BaseModel):
+class RefreshTokenBaseSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     refresh_token: str = Field(min_length=1)
 
 
+class TokenRefreshRequestSchema(RefreshTokenBaseSchema):
+    pass
+
+
 class TokenRefreshResponseSchema(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UserLogoutRequestSchema(RefreshTokenBaseSchema):
+    pass
