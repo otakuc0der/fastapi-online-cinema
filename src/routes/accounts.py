@@ -13,10 +13,15 @@ from exceptions import (
 from schemas.accounts import (
     MessageResponseSchema,
     UserActivationRequestSchema,
+    UserActivationResendRequestSchema,
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
-from services.account_crud import activate_user, register_user
+from services.account_crud import (
+    activate_user,
+    register_user,
+    renew_activation_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,4 +99,34 @@ async def activate_account(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during account activation.",
+        ) from error
+
+
+@router.post(
+    "/activate/resend/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def resend_activation(
+    resend_data: UserActivationResendRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await renew_activation_token(
+            db=db,
+            email=str(resend_data.email),
+        )
+
+        return MessageResponseSchema(
+            message=(
+                "If the account requires activation, " "the request has been processed."
+            )
+        )
+
+    except Exception as error:
+        logger.exception("Failed to renew activation token")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while requesting account activation.",
         ) from error
