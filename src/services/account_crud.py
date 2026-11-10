@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +19,7 @@ from exceptions import (
     UserAlreadyExistsError,
     UserGroupNotFoundError,
 )
+from services.utils import generate_secure_token
 
 
 async def get_user_by_email(
@@ -194,6 +195,52 @@ async def activate_user(
         await db.delete(token_record)
 
         await db.commit()
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def renew_activation_token(
+    db: AsyncSession,
+    email: str,
+) -> ActivationTokenModel | None:
+    try:
+        email = accounts_validators.validate_email(email)
+
+        user = await get_user_by_email_for_update(
+            db=db,
+            email=email,
+        )
+
+        if user is None or user.is_active:
+            await db.rollback()
+            return None
+
+        token_record = await get_activation_token_by_user_id(
+            db=db,
+            user_id=user.id,
+        )
+
+        now_utc = datetime.now(timezone.utc)
+
+        if token_record is not None:
+            if get_token_expires_at(token_record) > now_utc:
+                await db.rollback()
+                return None
+
+            token_record.token = generate_secure_token()
+            token_record.expires_at = now_utc + timedelta(days=1)
+
+        else:
+            token_record = ActivationTokenModel(
+                user_id=user.id,
+            )
+            db.add(token_record)
+
+        await db.commit()
+
+        return token_record
 
     except Exception:
         await db.rollback()
