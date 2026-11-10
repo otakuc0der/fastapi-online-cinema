@@ -13,7 +13,12 @@ from database import (
     accounts_validators,
 )
 from database.models.accounts import TokenBaseModel
-from exceptions import UserAlreadyExistsError, UserGroupNotFoundError
+from exceptions import (
+    InvalidActivationTokenError,
+    UserAlreadyActiveError,
+    UserAlreadyExistsError,
+    UserGroupNotFoundError,
+)
 
 
 async def get_user_by_email(
@@ -143,6 +148,52 @@ async def register_user(
             ) from error
 
         raise
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def activate_user(
+    db: AsyncSession,
+    email: str,
+    token: str,
+) -> None:
+    try:
+        email = accounts_validators.validate_email(email)
+
+        user = await get_user_by_email_for_update(
+            db=db,
+            email=email,
+        )
+
+        if user is None:
+            raise InvalidActivationTokenError()
+
+        token_record = await get_activation_token(
+            db=db,
+            email=email,
+            token=token,
+        )
+
+        if token_record is None:
+            raise InvalidActivationTokenError()
+
+        token_expires_at = get_token_expires_at(token_record)
+
+        if token_expires_at <= datetime.now(timezone.utc):
+            await db.delete(token_record)
+            await db.commit()
+
+            raise InvalidActivationTokenError()
+
+        if user.is_active:
+            raise UserAlreadyActiveError()
+
+        user.is_active = True
+        await db.delete(token_record)
+
+        await db.commit()
 
     except Exception:
         await db.rollback()
