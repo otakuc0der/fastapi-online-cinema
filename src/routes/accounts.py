@@ -24,6 +24,7 @@ from schemas.accounts import (
     UserActivationResendRequestSchema,
     UserLoginRequestSchema,
     UserLoginResponseSchema,
+    UserLogoutRequestSchema,
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
@@ -31,6 +32,7 @@ from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
     login_user as login_user_service,
+    logout_user,
     refresh_access_token,
     register_user,
     renew_activation_token,
@@ -236,4 +238,30 @@ async def refresh_token(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while refreshing the access token.",
+        ) from error
+
+
+@router.post(
+    "/logout/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def logout(
+    logout_data: UserLogoutRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await logout_user(
+            db=db,
+            refresh_token=logout_data.refresh_token,
+        )
+
+        return MessageResponseSchema(message="User logged out successfully.")
+
+    except Exception as error:
+        logger.exception("Failed to log out user")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during logout.",
         ) from error
