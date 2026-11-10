@@ -1,4 +1,6 @@
 from exceptions.accounts import (
+    InvalidActivationTokenError,
+    UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
 )
