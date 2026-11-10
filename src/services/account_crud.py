@@ -363,3 +363,25 @@ async def refresh_access_token(
     return jwt_manager.create_access_token(
         data={"sub": str(user.id)},
     )
+
+
+async def logout_user(
+    db: AsyncSession,
+    refresh_token: str,
+) -> None:
+    try:
+        token_record = await get_refresh_token(
+            db=db,
+            token=refresh_token,
+        )
+
+        if token_record is None:
+            await db.rollback()
+            return
+
+        await db.delete(token_record)
+        await db.commit()
+
+    except Exception:
+        await db.rollback()
+        raise
