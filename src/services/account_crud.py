@@ -487,3 +487,49 @@ async def change_user_password(
     except Exception:
         await db.rollback()
         raise
+
+
+async def request_password_reset(
+    db: AsyncSession,
+    email: str,
+) -> PasswordResetTokenModel | None:
+    try:
+        email = accounts_validators.validate_email(email)
+
+        user = await get_user_by_email_for_update(
+            db=db,
+            email=email,
+        )
+
+        if user is None or not user.is_active:
+            await db.rollback()
+            return None
+
+        token_record = await get_password_reset_token_by_user_id(
+            db=db,
+            user_id=user.id,
+        )
+
+        now_utc = datetime.now(timezone.utc)
+
+        if token_record is not None:
+            if get_token_expires_at(token_record) > now_utc:
+                await db.rollback()
+                return None
+
+            token_record.token = generate_secure_token()
+            token_record.expires_at = now_utc + timedelta(days=1)
+
+        else:
+            token_record = PasswordResetTokenModel(
+                user_id=user.id,
+            )
+            db.add(token_record)
+
+        await db.commit()
+
+        return token_record
+
+    except Exception:
+        await db.rollback()
+        raise
