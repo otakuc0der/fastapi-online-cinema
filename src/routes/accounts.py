@@ -22,6 +22,7 @@ from exceptions import (
 from schemas.accounts import (
     MessageResponseSchema,
     PasswordChangeRequestSchema,
+    PasswordResetRequestSchema,
     TokenRefreshRequestSchema,
     TokenRefreshResponseSchema,
     UserActivationRequestSchema,
@@ -43,6 +44,7 @@ from services.account_crud import (
     refresh_access_token,
     register_user,
     renew_activation_token,
+    request_password_reset as request_password_reset_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -331,4 +333,35 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while changing the password.",
+        ) from error
+
+
+@router.post(
+    "/password/reset/request/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def request_password_reset(
+    password_reset_data: PasswordResetRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await request_password_reset_service(
+            db=db,
+            email=str(password_reset_data.email),
+        )
+
+        return MessageResponseSchema(
+            message=(
+                "If the account exists and is active, "
+                "the password reset request has been processed."
+            )
+        )
+
+    except Exception as error:
+        logger.exception("Failed to request password reset")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while requesting a password reset.",
         ) from error
