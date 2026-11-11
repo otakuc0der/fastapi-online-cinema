@@ -19,6 +19,7 @@ from exceptions import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
     InvalidPasswordError,
+    InvalidPasswordResetTokenError,
     InvalidTokenError,
     PasswordUnchangedError,
     TokenExpiredError,
@@ -529,6 +530,60 @@ async def request_password_reset(
         await db.commit()
 
         return token_record
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def reset_user_password(
+    db: AsyncSession,
+    email: str,
+    token: str,
+    new_password: str,
+) -> None:
+    try:
+        email = accounts_validators.validate_email(email)
+
+        user = await get_user_by_email_for_update(
+            db=db,
+            email=email,
+        )
+
+        if user is None or not user.is_active:
+            raise InvalidPasswordResetTokenError()
+
+        token_record = await get_password_reset_token(
+            db=db,
+            email=email,
+            token=token,
+        )
+
+        if token_record is None:
+            raise InvalidPasswordResetTokenError()
+
+        token_expires_at = get_token_expires_at(token_record)
+
+        if token_expires_at <= datetime.now(timezone.utc):
+            await db.delete(token_record)
+            await db.commit()
+
+            raise InvalidPasswordResetTokenError()
+
+        if user.verify_password(new_password):
+            raise PasswordUnchangedError()
+
+        user.password = new_password
+
+        await db.delete(token_record)
+
+        await db.execute(
+            delete(RefreshTokenModel).where(
+                RefreshTokenModel.user_id == user.id,
+            )
+        )
+
+        await db.commit()
 
     except Exception:
         await db.rollback()
