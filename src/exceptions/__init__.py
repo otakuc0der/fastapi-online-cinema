@@ -2,6 +2,7 @@ from exceptions.accounts import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
     InvalidPasswordError,
+    InvalidPasswordResetTokenError,
     PasswordUnchangedError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,

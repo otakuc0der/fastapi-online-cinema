@@ -55,6 +55,12 @@ class PasswordUnchangedError(BaseAccountError):
     default_message = "New password must differ from the current password."
 
 
+class InvalidPasswordResetTokenError(BaseAccountError):
+    """The password reset token is missing, invalid or expired."""
+
+    default_message = "Invalid or expired password reset token."
+
+
 class UserNotFoundError(BaseAccountError):
     """The requested user does not exist."""
 
