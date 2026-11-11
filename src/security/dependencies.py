@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_jwt_auth_manager
-from database import UserModel, get_db
+from database import UserGroupEnum, UserModel, get_db
 from exceptions import (
     InvalidTokenError,
     TokenExpiredError,
@@ -84,3 +84,46 @@ async def get_current_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during authentication.",
         ) from error
+
+
+async def get_current_admin(
+    user: UserModel = Depends(get_current_user),
+) -> UserModel:
+    if user.group is None:
+        logger.error("User %s has no assigned group", user.id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while checking user permissions.",
+        )
+
+    if user.group.name != UserGroupEnum.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator permissions are required.",
+        )
+
+    return user
+
+
+async def get_current_moderator(
+    user: UserModel = Depends(get_current_user),
+) -> UserModel:
+    if user.group is None:
+        logger.error("User %s has no assigned group", user.id)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while checking user permissions.",
+        )
+
+    if user.group.name not in (
+        UserGroupEnum.MODERATOR,
+        UserGroupEnum.ADMIN,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Moderator or administrator permissions are required.",
+        )
+
+    return user
