@@ -58,6 +58,18 @@ async def get_user_by_id(
     )
 
 
+async def get_user_by_id_for_update(
+    db: AsyncSession,
+    user_id: int,
+) -> UserModel | None:
+    return await db.scalar(
+        select(UserModel)
+        .where(UserModel.id == user_id)
+        .with_for_update(of=UserModel)
+        .execution_options(populate_existing=True)
+    )
+
+
 async def get_user_group_by_name(
     db: AsyncSession,
     group_name: UserGroupEnum,
