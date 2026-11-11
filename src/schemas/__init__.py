@@ -8,6 +8,7 @@ from schemas.accounts import (
     UserActivationRequestSchema,
     UserActivationResendRequestSchema,
     UserCurrentResponseSchema,
+    UserGroupUpdateRequestSchema,
     UserLoginRequestSchema,
     UserLoginResponseSchema,
     UserLogoutRequestSchema,

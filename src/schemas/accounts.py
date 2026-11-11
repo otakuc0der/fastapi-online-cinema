@@ -6,7 +6,7 @@ from pydantic import (
     field_validator,
 )
 
-from database import accounts_validators
+from database import UserGroupEnum, accounts_validators
 
 
 class UserBaseSchema(BaseModel):
@@ -108,3 +108,9 @@ class UserCurrentResponseSchema(UserBaseSchema):
 
     id: int
     is_active: bool
+
+
+class UserGroupUpdateRequestSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group: UserGroupEnum
