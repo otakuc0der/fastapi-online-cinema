@@ -35,6 +35,8 @@ from schemas.examples.movies import (
     movie_search_response_example,
     movie_updated_detail_example,
 )
+from schemas.examples.security import moderator_error_responses
+from security.dependencies import get_current_moderator
 from services.movie_crud import (
     build_movie_ordering,
     count_movies,
@@ -557,6 +559,7 @@ async def get_movie(
     "/movies/",
     name="movie-create",
     operation_id="create_movie",
+    dependencies=[Depends(get_current_moderator)],
     response_model=MovieDetailSchema,
     summary="Create a movie",
     description=(
@@ -571,10 +574,13 @@ async def get_movie(
         "Unknown request fields are rejected.\n\n"
         "A duplicate (name, year, time) combination returns 409. "
         "Movie names are compared case-sensitively for this check."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Created movie with generated identifiers and related entities.",
     status_code=status.HTTP_201_CREATED,
     responses={
+        **moderator_error_responses,
         201: {
             "content": {
                 "application/json": {
@@ -642,6 +648,7 @@ async def create_movie(
     "/movies/{movie_id}/",
     name="movie-update",
     operation_id="update_movie",
+    dependencies=[Depends(get_current_moderator)],
     response_model=MovieDetailSchema,
     summary="Update a movie",
     description=(
@@ -651,10 +658,13 @@ async def create_movie(
         "fields follow the creation limits. ID, UUID and relations cannot be updated "
         "here. Returns 404 for an unknown movie and 409 if the resulting "
         "(name, year, time) combination matches another movie."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Updated movie details, including unchanged relations.",
     status_code=status.HTTP_200_OK,
     responses={
+        **moderator_error_responses,
         200: {
             "content": {
                 "application/json": {
@@ -763,6 +773,7 @@ async def update_movie(
     "/movies/{movie_id}/",
     name="movie-delete",
     operation_id="delete_movie",
+    dependencies=[Depends(get_current_moderator)],
     response_class=Response,
     response_model=None,
     summary="Delete a movie",
@@ -770,10 +781,13 @@ async def update_movie(
         "Delete a movie and its association rows. Certification, genres, stars and "
         "directors remain available. Returns 204 with no response body, "
         "or 404 when the movie does not exist."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Movie deleted; no response body.",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
+        **moderator_error_responses,
         204: {
             "description": "Movie deleted successfully. The response body is empty.",
         },

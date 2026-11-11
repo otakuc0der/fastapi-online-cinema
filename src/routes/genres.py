@@ -23,6 +23,8 @@ from schemas.examples.genres import (
     genre_list_response_example,
     genre_updated_response_example,
 )
+from schemas.examples.security import moderator_error_responses
+from security.dependencies import get_current_moderator
 from services.genre_crud import (
     create_genre_record,
     delete_genre_record,
@@ -167,6 +169,7 @@ async def get_genre(
     "/genres/",
     name="genre-create",
     operation_id="create_genre",
+    dependencies=[Depends(get_current_moderator)],
     response_model=GenreSchema,
     summary="Create a genre",
     description=(
@@ -176,10 +179,13 @@ async def get_genre(
         "Names are checked for duplicates without regard to case. "
         "Unknown request fields are rejected. "
         "Creating a genre does not associate it with movies."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Created genre with its generated ID.",
     status_code=status.HTTP_201_CREATED,
     responses={
+        **moderator_error_responses,
         409: {
             "description": "A genre with the same name already exists.",
             "content": {
@@ -235,20 +241,24 @@ async def create_genre(
     "/genres/{genre_id}/",
     name="genre-update",
     operation_id="update_genre",
+    dependencies=[Depends(get_current_moderator)],
     response_model=GenreSchema,
     summary="Rename a genre",
     description=(
         "Update a genre's name while preserving its ID and movie associations. "
         "The name field is required; an empty request body is rejected.\n\n"
         "Leading and trailing whitespace is removed. "
-        "The cleaned name must contain 1–100 characters. "
+        "The cleaned name must contain 1-100 characters. "
         "Names are checked for duplicates without regard to case, "
         "excluding the current record. "
         "Submitting the current name is allowed. Unknown fields are rejected."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Genre with the updated name.",
     status_code=status.HTTP_200_OK,
     responses={
+        **moderator_error_responses,
         200: {
             "content": {
                 "application/json": {
@@ -331,15 +341,19 @@ async def update_genre(
     "/genres/{genre_id}/",
     name="genre-delete",
     operation_id="delete_genre",
+    dependencies=[Depends(get_current_moderator)],
     response_model=None,
     summary="Delete a genre",
     description=(
         "Delete a genre and its movie associations. "
         "Associated movies remain in the catalog. "
         "Return 204 without a response body, or 404 if the genre does not exist."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
+        **moderator_error_responses,
         204: {
             "description": "Genre deleted. No response body.",
         },

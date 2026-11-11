@@ -23,7 +23,9 @@ from schemas import (
     StarSchema,
     StarUpdateSchema,
 )
+from schemas.examples.security import moderator_error_responses
 from schemas.examples.stars import star_updated_response_example
+from security.dependencies import get_current_moderator
 from services.star_crud import (
     count_star_records,
     create_star_record,
@@ -218,6 +220,7 @@ async def get_star(
     "/stars/",
     name="star-create",
     operation_id="create_star",
+    dependencies=[Depends(get_current_moderator)],
     response_model=StarSchema,
     summary="Create an actor",
     description=(
@@ -226,10 +229,13 @@ async def get_star(
         "Names are checked for duplicates without regard to case. "
         "Unknown request fields are rejected. "
         "Creating an actor does not associate the record with movies."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Created actor with its generated ID.",
     status_code=status.HTTP_201_CREATED,
     responses={
+        **moderator_error_responses,
         409: {
             "description": "An actor record with the same name already exists.",
             "content": {
@@ -285,6 +291,7 @@ async def create_star(
     "/stars/{star_id}/",
     name="star-update",
     operation_id="update_star",
+    dependencies=[Depends(get_current_moderator)],
     response_model=StarSchema,
     summary="Rename an actor",
     description=(
@@ -295,10 +302,13 @@ async def create_star(
         "Names are checked for duplicates without regard to case, "
         "excluding the current record. Keeping the current name or changing "
         "only its letter case is allowed. Unknown fields are rejected."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     response_description="Actor with the updated name.",
     status_code=status.HTTP_200_OK,
     responses={
+        **moderator_error_responses,
         200: {
             "content": {
                 "application/json": {
@@ -381,15 +391,19 @@ async def update_star(
     "/stars/{star_id}/",
     name="star-delete",
     operation_id="delete_star",
+    dependencies=[Depends(get_current_moderator)],
     response_model=None,
     summary="Delete an actor",
     description=(
         "Delete an actor record and its movie associations. "
         "Associated movies remain in the catalog. "
         "Return 204 without a response body, or 404 if the actor does not exist."
+        "\n\nRequires a valid Bearer access token for an active moderator "
+        "or administrator."
     ),
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
+        **moderator_error_responses,
         204: {
             "description": "Actor deleted. No response body.",
         },
