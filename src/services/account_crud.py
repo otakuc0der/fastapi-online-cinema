@@ -619,3 +619,40 @@ async def activate_user_by_admin(
     except Exception:
         await db.rollback()
         raise
+
+
+async def change_user_group(
+    db: AsyncSession,
+    user_id: int,
+    group_name: UserGroupEnum,
+) -> None:
+    try:
+        user = await get_user_by_id_for_update(
+            db=db,
+            user_id=user_id,
+        )
+
+        if user is None:
+            raise UserNotFoundError(f"User with ID {user_id} was not found.")
+
+        group = await get_user_group_by_name(
+            db=db,
+            group_name=group_name,
+        )
+
+        if group is None:
+            raise UserGroupNotFoundError(
+                f"User group '{group_name.value}' was not found."
+            )
+
+        if user.group_id == group.id:
+            await db.rollback()
+            return
+
+        user.group = group
+
+        await db.commit()
+
+    except Exception:
+        await db.rollback()
+        raise
