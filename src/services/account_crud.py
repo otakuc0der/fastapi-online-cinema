@@ -588,3 +588,34 @@ async def reset_user_password(
     except Exception:
         await db.rollback()
         raise
+
+
+async def activate_user_by_admin(
+    db: AsyncSession,
+    user_id: int,
+) -> None:
+    try:
+        user = await get_user_by_id_for_update(
+            db=db,
+            user_id=user_id,
+        )
+
+        if user is None:
+            raise UserNotFoundError(f"User with ID {user_id} was not found.")
+
+        if user.is_active:
+            raise UserAlreadyActiveError()
+
+        user.is_active = True
+
+        await db.execute(
+            delete(ActivationTokenModel).where(
+                ActivationTokenModel.user_id == user_id,
+            )
+        )
+
+        await db.commit()
+
+    except Exception:
+        await db.rollback()
+        raise
