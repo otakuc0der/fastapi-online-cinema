@@ -31,6 +31,7 @@ from schemas.accounts import (
     UserActivationRequestSchema,
     UserActivationResendRequestSchema,
     UserCurrentResponseSchema,
+    UserGroupUpdateRequestSchema,
     UserLoginRequestSchema,
     UserLoginResponseSchema,
     UserLogoutRequestSchema,
@@ -42,6 +43,7 @@ from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
     activate_user_by_admin,
+    change_user_group,
     change_user_password,
     login_user as login_user_service,
     logout_user,
@@ -453,4 +455,56 @@ async def admin_activate_account(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during account activation.",
+        ) from error
+
+
+@router.patch(
+    "/admin/users/{user_id}/group/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def admin_change_user_group(
+    user_id: Annotated[int, Path(ge=1)],
+    group_data: UserGroupUpdateRequestSchema,
+    admin: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    admin_id = admin.id
+
+    try:
+        await change_user_group(
+            db=db,
+            user_id=user_id,
+            group_name=group_data.group,
+        )
+
+        return MessageResponseSchema(message="User group updated successfully.")
+
+    except UserNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+
+    except UserGroupNotFoundError as error:
+        logger.exception(
+            "Required user group '%s' is missing",
+            group_data.group.value,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while updating the user group.",
+        ) from error
+
+    except Exception as error:
+        logger.exception(
+            "Administrator %s failed to update group for user %s",
+            admin_id,
+            user_id,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while updating the user group.",
         ) from error
