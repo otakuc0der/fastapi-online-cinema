@@ -101,3 +101,10 @@ class TokenRefreshResponseSchema(BaseModel):
 
 class UserLogoutRequestSchema(RefreshTokenBaseSchema):
     pass
+
+
+class UserCurrentResponseSchema(UserBaseSchema):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    is_active: bool
