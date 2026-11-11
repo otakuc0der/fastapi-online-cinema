@@ -9,15 +9,19 @@ from database import UserModel, get_db
 from exceptions import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
+    InvalidPasswordError,
     InvalidTokenError,
+    PasswordUnchangedError,
     TokenExpiredError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
     UserNotActiveError,
+    UserNotFoundError,
 )
 from schemas.accounts import (
     MessageResponseSchema,
+    PasswordChangeRequestSchema,
     TokenRefreshRequestSchema,
     TokenRefreshResponseSchema,
     UserActivationRequestSchema,
@@ -33,6 +37,7 @@ from security.dependencies import get_current_user
 from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
+    change_user_password,
     login_user as login_user_service,
     logout_user,
     refresh_access_token,
@@ -278,3 +283,52 @@ async def get_current_account(
     user: UserModel = Depends(get_current_user),
 ) -> UserCurrentResponseSchema:
     return UserCurrentResponseSchema.model_validate(user)
+
+
+@router.post(
+    "/password/change/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def change_password(
+    password_data: PasswordChangeRequestSchema,
+    user: UserModel = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await change_user_password(
+            db=db,
+            user=user,
+            old_password=password_data.old_password,
+            new_password=password_data.new_password,
+        )
+
+        return MessageResponseSchema(
+            message="Password changed successfully. Please log in again."
+        )
+
+    except (InvalidPasswordError, PasswordUnchangedError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    except UserNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+
+    except UserNotActiveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Failed to change user password")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while changing the password.",
+        ) from error
