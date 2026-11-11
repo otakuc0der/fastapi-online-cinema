@@ -10,6 +10,7 @@ from exceptions import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
     InvalidPasswordError,
+    InvalidPasswordResetTokenError,
     InvalidTokenError,
     PasswordUnchangedError,
     TokenExpiredError,
@@ -22,6 +23,7 @@ from exceptions import (
 from schemas.accounts import (
     MessageResponseSchema,
     PasswordChangeRequestSchema,
+    PasswordResetCompleteRequestSchema,
     PasswordResetRequestSchema,
     TokenRefreshRequestSchema,
     TokenRefreshResponseSchema,
@@ -45,6 +47,7 @@ from services.account_crud import (
     register_user,
     renew_activation_token,
     request_password_reset as request_password_reset_service,
+    reset_user_password,
 )
 
 logger = logging.getLogger(__name__)
@@ -364,4 +367,43 @@ async def request_password_reset(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while requesting a password reset.",
+        ) from error
+
+
+@router.post(
+    "/password/reset/complete/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def reset_password(
+    password_data: PasswordResetCompleteRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    try:
+        await reset_user_password(
+            db=db,
+            email=str(password_data.email),
+            token=password_data.token,
+            new_password=password_data.password,
+        )
+
+        return MessageResponseSchema(
+            message="Password reset successfully. Please log in."
+        )
+
+    except (
+        InvalidPasswordResetTokenError,
+        PasswordUnchangedError,
+    ) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception("Failed to reset user password")
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while resetting the password.",
         ) from error
