@@ -137,6 +137,34 @@ async def get_refresh_token(
     )
 
 
+async def get_password_reset_token_by_user_id(
+    db: AsyncSession,
+    user_id: int,
+) -> PasswordResetTokenModel | None:
+    return await db.scalar(
+        select(PasswordResetTokenModel)
+        .where(PasswordResetTokenModel.user_id == user_id)
+        .with_for_update(of=PasswordResetTokenModel)
+    )
+
+
+async def get_password_reset_token(
+    db: AsyncSession,
+    email: str,
+    token: str,
+) -> PasswordResetTokenModel | None:
+    return await db.scalar(
+        select(PasswordResetTokenModel)
+        .join(PasswordResetTokenModel.user)
+        .options(joinedload(PasswordResetTokenModel.user))
+        .where(
+            UserModel.email == email,
+            PasswordResetTokenModel.token == token,
+        )
+        .with_for_update(of=PasswordResetTokenModel)
+    )
+
+
 async def register_user(
     db: AsyncSession,
     email: str,
