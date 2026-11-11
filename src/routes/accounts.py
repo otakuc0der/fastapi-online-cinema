@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_jwt_auth_manager, get_settings
 from config.settings import Settings
-from database import get_db
+from database import UserModel, get_db
 from exceptions import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
@@ -22,12 +22,14 @@ from schemas.accounts import (
     TokenRefreshResponseSchema,
     UserActivationRequestSchema,
     UserActivationResendRequestSchema,
+    UserCurrentResponseSchema,
     UserLoginRequestSchema,
     UserLoginResponseSchema,
     UserLogoutRequestSchema,
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
+from security.dependencies import get_current_user
 from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
@@ -265,3 +267,14 @@ async def logout(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during logout.",
         ) from error
+
+
+@router.get(
+    "/me/",
+    response_model=UserCurrentResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def get_current_account(
+    user: UserModel = Depends(get_current_user),
+) -> UserCurrentResponseSchema:
+    return UserCurrentResponseSchema.model_validate(user)
