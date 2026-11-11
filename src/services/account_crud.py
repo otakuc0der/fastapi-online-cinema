@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from database import (
     ActivationTokenModel,
+    PasswordResetTokenModel,
     RefreshTokenModel,
     UserGroupEnum,
     UserGroupModel,
@@ -17,12 +18,15 @@ from database.models.accounts import TokenBaseModel
 from exceptions import (
     InvalidActivationTokenError,
     InvalidCredentialsError,
+    InvalidPasswordError,
     InvalidTokenError,
+    PasswordUnchangedError,
     TokenExpiredError,
     UserAlreadyActiveError,
     UserAlreadyExistsError,
     UserGroupNotFoundError,
     UserNotActiveError,
+    UserNotFoundError,
 )
 from security.interfaces import JWTAuthManagerInterface
 from services.utils import generate_secure_token
@@ -403,6 +407,53 @@ async def logout_user(
             return
 
         await db.delete(token_record)
+        await db.commit()
+
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def change_user_password(
+    db: AsyncSession,
+    user: UserModel,
+    old_password: str,
+    new_password: str,
+) -> None:
+    try:
+        user_id = user.id
+
+        user = await get_user_by_id_for_update(
+            db=db,
+            user_id=user_id,
+        )
+
+        if user is None:
+            raise UserNotFoundError(f"User with ID {user_id} was not found.")
+
+        if not user.is_active:
+            raise UserNotActiveError()
+
+        if not user.verify_password(old_password):
+            raise InvalidPasswordError()
+
+        if user.verify_password(new_password):
+            raise PasswordUnchangedError()
+
+        user.password = new_password
+
+        await db.execute(
+            delete(RefreshTokenModel).where(
+                RefreshTokenModel.user_id == user.id,
+            )
+        )
+
+        await db.execute(
+            delete(PasswordResetTokenModel).where(
+                PasswordResetTokenModel.user_id == user.id,
+            )
+        )
+
         await db.commit()
 
     except Exception:
