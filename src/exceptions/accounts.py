@@ -41,3 +41,21 @@ class UserNotActiveError(BaseAccountError):
     """The requested operation requires an active account."""
 
     default_message = "User account is not activated."
+
+
+class InvalidPasswordError(BaseAccountError):
+    """The supplied current password is incorrect."""
+
+    default_message = "Current password is incorrect."
+
+
+class PasswordUnchangedError(BaseAccountError):
+    """The new password matches the current password."""
+
+    default_message = "New password must differ from the current password."
+
+
+class UserNotFoundError(BaseAccountError):
+    """The requested user does not exist."""
+
+    default_message = "User was not found."
