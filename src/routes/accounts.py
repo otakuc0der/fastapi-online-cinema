@@ -1,6 +1,7 @@
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_jwt_auth_manager, get_settings
@@ -36,10 +37,11 @@ from schemas.accounts import (
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
-from security.dependencies import get_current_user
+from security.dependencies import get_current_admin, get_current_user
 from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
     activate_user,
+    activate_user_by_admin,
     change_user_password,
     login_user as login_user_service,
     logout_user,
@@ -406,4 +408,49 @@ async def reset_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while resetting the password.",
+        ) from error
+
+
+@router.post(
+    "/admin/users/{user_id}/activate/",
+    response_model=MessageResponseSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def admin_activate_account(
+    user_id: Annotated[int, Path(ge=1)],
+    admin: UserModel = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponseSchema:
+    admin_id = admin.id
+
+    try:
+        await activate_user_by_admin(
+            db=db,
+            user_id=user_id,
+        )
+
+        return MessageResponseSchema(message="User account activated successfully.")
+
+    except UserNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+
+    except UserAlreadyActiveError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        logger.exception(
+            "Administrator %s failed to activate user %s",
+            admin_id,
+            user_id,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred during account activation.",
         ) from error
