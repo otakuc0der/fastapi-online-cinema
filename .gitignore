@@ -291,4 +291,5 @@ pyrightconfig.json
 pyvenv.cfg
 pip-selfcheck.json
 
-# End of https://www.toptal.com/developers/gitignore/api/venv,python,pycharm
+celerybeat-schedule*
+celerybeat.pid
