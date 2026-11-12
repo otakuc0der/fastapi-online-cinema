@@ -10,6 +10,25 @@ class BaseAppSettings(BaseSettings):
         BASE_DIR / "database" / "seed_data" / "imdb_top_1000.csv"
     )
 
+    PATH_TO_EMAIL_TEMPLATES_DIR: Path = BASE_DIR / "notifications" / "templates"
+    ACTIVATION_EMAIL_TEMPLATE_NAME: str = "activation_request.html"
+    ACTIVATION_COMPLETE_EMAIL_TEMPLATE_NAME: str = "activation_complete.html"
+    PASSWORD_RESET_TEMPLATE_NAME: str = "password_reset_request.html"
+    PASSWORD_RESET_COMPLETE_TEMPLATE_NAME: str = "password_reset_complete.html"
+
+    EMAIL_HOST: str = "127.0.0.1"
+    EMAIL_PORT: int = 1025
+    EMAIL_FROM: str = "cinema@example.com"
+
+    EMAIL_USE_TLS: bool = False
+    EMAIL_START_TLS: bool = False
+
+    EMAIL_HOST_USER: str | None = None
+    EMAIL_HOST_PASSWORD: str | None = None
+    MAILHOG_API_PORT: int = 8025
+
+    BASE_URL: str = "http://127.0.0.1:8000"
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR.parent / ".env",
         env_file_encoding="utf-8",

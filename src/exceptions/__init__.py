@@ -10,6 +10,11 @@ from exceptions.accounts import (
     UserNotActiveError,
     UserNotFoundError,
 )
+from exceptions.email import (
+    BaseEmailError,
+    EmailDeliveryError,
+    EmailTemplateError,
+)
 from exceptions.genres import GenreAlreadyExistsError
 from exceptions.movies import MovieAlreadyExistsError
 from exceptions.security import (

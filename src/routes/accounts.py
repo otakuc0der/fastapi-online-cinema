@@ -1,11 +1,23 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Path,
+    Request,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import get_jwt_auth_manager, get_settings
-from config.settings import Settings
+from config import (
+    get_accounts_email_notificator,
+    get_jwt_auth_manager,
+    get_settings,
+)
+from config.settings import BaseAppSettings, Settings
 from database import UserModel, get_db
 from exceptions import (
     InvalidActivationTokenError,
@@ -21,6 +33,8 @@ from exceptions import (
     UserNotActiveError,
     UserNotFoundError,
 )
+from notifications import EmailSenderInterface
+from routes.utils import build_url
 from schemas.accounts import (
     MessageResponseSchema,
     PasswordChangeRequestSchema,
@@ -65,14 +79,31 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
 )
 async def register(
+    request: Request,
+    background_tasks: BackgroundTasks,
     user_data: UserRegistrationRequestSchema,
     db: AsyncSession = Depends(get_db),
+    settings: BaseAppSettings = Depends(get_settings),
+    email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> UserRegistrationResponseSchema:
     try:
-        user, _ = await register_user(
+        user, activation_token = await register_user(
             db=db,
             email=str(user_data.email),
             raw_password=user_data.password,
+        )
+
+        activation_link = build_url(
+            request=request,
+            base_url=settings.BASE_URL,
+            route_name="activate_account",
+            token=activation_token.token,
+        )
+
+        background_tasks.add_task(
+            email_notificator.send_activation_email,
+            email=user.email,
+            activation_link=activation_link,
         )
 
         return UserRegistrationResponseSchema.model_validate(user)
@@ -106,14 +137,28 @@ async def register(
     status_code=status.HTTP_200_OK,
 )
 async def activate_account(
+    request: Request,
     activation_data: UserActivationRequestSchema,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    settings: BaseAppSettings = Depends(get_settings),
+    email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     try:
+        email = str(activation_data.email)
+
         await activate_user(
             db=db,
-            email=str(activation_data.email),
+            email=email,
             token=activation_data.token,
+        )
+
+        background_tasks.add_task(
+            email_sender.send_activation_complete_email,
+            email=email,
+            login_link=build_url(
+                request=request, base_url=settings.BASE_URL, route_name="login_user"
+            ),
         )
 
         return MessageResponseSchema(message="User account activated successfully.")
@@ -139,18 +184,38 @@ async def activate_account(
     status_code=status.HTTP_200_OK,
 )
 async def resend_activation(
+    request: Request,
+    background_tasks: BackgroundTasks,
     resend_data: UserActivationResendRequestSchema,
     db: AsyncSession = Depends(get_db),
+    settings: BaseAppSettings = Depends(get_settings),
+    email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     try:
-        await renew_activation_token(
+        email = str(resend_data.email)
+
+        activation_token = await renew_activation_token(
             db=db,
-            email=str(resend_data.email),
+            email=email,
         )
+
+        if activation_token is not None:
+            activation_link = build_url(
+                request=request,
+                base_url=settings.BASE_URL,
+                route_name="activate_account",
+                token=activation_token.token,
+            )
+
+            background_tasks.add_task(
+                email_sender.send_activation_email,
+                email=email,
+                activation_link=activation_link,
+            )
 
         return MessageResponseSchema(
             message=(
-                "If the account requires activation, " "the request has been processed."
+                "If the account requires activation, the request has been processed."
             )
         )
 
@@ -349,14 +414,34 @@ async def change_password(
     status_code=status.HTTP_200_OK,
 )
 async def request_password_reset(
+    request: Request,
+    background_tasks: BackgroundTasks,
     password_reset_data: PasswordResetRequestSchema,
     db: AsyncSession = Depends(get_db),
+    settings: BaseAppSettings = Depends(get_settings),
+    email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     try:
-        await request_password_reset_service(
+        email = str(password_reset_data.email)
+
+        reset_token = await request_password_reset_service(
             db=db,
-            email=str(password_reset_data.email),
+            email=email,
         )
+
+        if reset_token is not None:
+            reset_link = build_url(
+                request=request,
+                base_url=settings.BASE_URL,
+                route_name="reset_password",
+                token=reset_token.token,
+            )
+
+            background_tasks.add_task(
+                email_notificator.send_password_reset_email,
+                email=email,
+                reset_link=reset_link,
+            )
 
         return MessageResponseSchema(
             message=(
@@ -380,8 +465,12 @@ async def request_password_reset(
     status_code=status.HTTP_200_OK,
 )
 async def reset_password(
+    request: Request,
+    background_tasks: BackgroundTasks,
     password_data: PasswordResetCompleteRequestSchema,
     db: AsyncSession = Depends(get_db),
+    settings: BaseAppSettings = Depends(get_settings),
+    email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     try:
         await reset_user_password(
@@ -389,6 +478,14 @@ async def reset_password(
             email=str(password_data.email),
             token=password_data.token,
             new_password=password_data.password,
+        )
+
+        background_tasks.add_task(
+            email_notificator.send_password_reset_complete_email,
+            email=str(password_data.email),
+            login_link=build_url(
+                request=request, base_url=settings.BASE_URL, route_name="login_user"
+            ),
         )
 
         return MessageResponseSchema(
