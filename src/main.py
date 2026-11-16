@@ -4,6 +4,7 @@ from routes import (
     account_router,
     genre_router,
     movie_router,
+    profile_router,
     star_router,
 )
 
@@ -32,6 +33,10 @@ tags_metadata = [
     {
         "name": "accounts",
         "description": "Register user accounts with email and password.",
+    },
+    {
+        "name": "profiles",
+        "description": "Create user profiles with optional avatars.",
     },
 ]
 
@@ -73,4 +78,10 @@ app.include_router(
     account_router,
     prefix=f"{api_version_prefix}/accounts",
     tags=["accounts"],
+)
+
+app.include_router(
+    profile_router,
+    prefix=f"{api_version_prefix}/profiles",
+    tags=["profiles"],
 )

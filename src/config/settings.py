@@ -29,6 +29,16 @@ class BaseAppSettings(BaseSettings):
 
     BASE_URL: str = "http://127.0.0.1:8000"
 
+    S3_STORAGE_HOST: str = "localhost"
+    S3_STORAGE_PORT: int = 9000
+    S3_STORAGE_ACCESS_KEY: str
+    S3_STORAGE_SECRET_KEY: str
+    S3_BUCKET_NAME: str = "cinema-storage"
+
+    @property
+    def S3_STORAGE_ENDPOINT(self) -> str:
+        return f"http://{self.S3_STORAGE_HOST}:{self.S3_STORAGE_PORT}"
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR.parent / ".env",
         env_file_encoding="utf-8",

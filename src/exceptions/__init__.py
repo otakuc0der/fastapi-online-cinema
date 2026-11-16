@@ -17,6 +17,7 @@ from exceptions.email import (
 )
 from exceptions.genres import GenreAlreadyExistsError
 from exceptions.movies import MovieAlreadyExistsError
+from exceptions.profiles import UserProfileAlreadyExistsError
 from exceptions.security import (
     BaseSecurityError,
     InvalidTokenError,
@@ -24,3 +25,9 @@ from exceptions.security import (
     TokenExpiredError,
 )
 from exceptions.stars import StarAlreadyExistsError
+from exceptions.storage import (
+    BaseS3Error,
+    S3ConnectionError,
+    S3FileDeleteError,
+    S3FileUploadError,
+)
