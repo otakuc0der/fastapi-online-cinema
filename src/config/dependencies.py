@@ -1,9 +1,10 @@
 from fastapi import Depends
 
-from config.settings import Settings
+from config.settings import BaseAppSettings, Settings
 from notifications import EmailSender, EmailSenderInterface
 from security.interfaces import JWTAuthManagerInterface
 from security.token_manager import JWTAuthManager
+from storages import S3StorageClient, S3StorageInterface
 
 
 def get_settings() -> Settings:
@@ -41,4 +42,15 @@ def get_accounts_email_notificator(
         ),
         username=settings.EMAIL_HOST_USER,
         password=settings.EMAIL_HOST_PASSWORD,
+    )
+
+
+def get_s3_storage_client(
+    settings: BaseAppSettings = Depends(get_settings),
+) -> S3StorageInterface:
+    return S3StorageClient(
+        endpoint_url=settings.S3_STORAGE_ENDPOINT,
+        access_key=settings.S3_STORAGE_ACCESS_KEY,
+        secret_key=settings.S3_STORAGE_SECRET_KEY,
+        bucket_name=settings.S3_BUCKET_NAME,
     )
