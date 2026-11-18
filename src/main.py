@@ -36,7 +36,10 @@ tags_metadata = [
     },
     {
         "name": "profiles",
-        "description": "Create user profiles with optional avatars.",
+        "description": (
+            "Create, view, update and delete user profiles. "
+            "Upload, replace and remove profile avatars."
+        ),
     },
 ]
 

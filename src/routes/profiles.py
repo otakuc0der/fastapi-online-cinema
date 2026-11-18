@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_s3_storage_client
@@ -22,6 +22,15 @@ from schemas import (
     ProfileRequestSchema,
     ProfileResponseSchema,
     ProfileUpdateSchema,
+)
+from schemas.examples.profiles import (
+    CREATE_PROFILE_RESPONSES,
+    DELETE_AVATAR_RESPONSES,
+    DELETE_PROFILE_RESPONSES,
+    GET_PROFILE_RESPONSES,
+    PROFILE_UPDATE_EXAMPLES,
+    UPDATE_AVATAR_RESPONSES,
+    UPDATE_PROFILE_RESPONSES,
 )
 from security.dependencies import get_current_user
 from services.profile_crud import (
@@ -85,9 +94,19 @@ async def build_profile_response(
     "/users/{user_id}/profile/",
     response_model=ProfileResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Get a user profile",
+    description=(
+        "Retrieve a profile belonging to the authenticated user or another user "
+        "if the caller is an administrator. The response contains a public "
+        "avatar URL or null. Constructing the URL does not contact S3 storage."
+    ),
+    responses=GET_PROFILE_RESPONSES,
 )
 async def get_profile(
-    user_id: Annotated[int, Path(ge=1)],
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user who owns the profile.", examples=[17]),
+    ],
     current_user: UserModel = Depends(get_current_user),
     s3_client: S3StorageInterface = Depends(get_s3_storage_client),
     db: AsyncSession = Depends(get_db),
@@ -133,9 +152,26 @@ async def get_profile(
     "/users/{user_id}/profile/",
     response_model=ProfileResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Create a user profile",
+    description=(
+        "Create one profile for an active user. Access is restricted to the "
+        "profile owner and administrators. Send fields using "
+        "multipart/form-data: first_name, last_name, gender, date_of_birth and "
+        "info are required. Avatar is optional. Names must contain only English "
+        "letters, be at most 100 characters and are stored in lowercase. The "
+        "biography must not be blank. Birth year must be 1900 or later, the "
+        "user must be at least 18 years old. Avatars must be valid JPEG or PNG "
+        "images up to 1 MiB (1,048,576 bytes). Avatar keys are stored in the "
+        "database, responses contain public URLs. If database saving fails "
+        "after upload, the service attempts to remove the new object."
+    ),
+    responses=CREATE_PROFILE_RESPONSES,
 )
 async def create_profile(
-    user_id: Annotated[int, Path(ge=1)],
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user who owns the profile.", examples=[17]),
+    ],
     profile_data: ProfileRequestSchema = Depends(ProfileRequestSchema.as_form),
     current_user: UserModel = Depends(get_current_user),
     s3_client: S3StorageInterface = Depends(get_s3_storage_client),
@@ -196,10 +232,33 @@ async def create_profile(
     "/users/{user_id}/profile/",
     response_model=ProfileResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Partially update a user profile",
+    description=(
+        "Update profile fields using application/json. Access is restricted to "
+        "the profile owner and administrators. Only supplied fields change, "
+        "explicit null values and unknown fields are rejected. An empty object "
+        "is accepted and leaves the profile unchanged. Names, biography and "
+        "birth date follow the same validation rules as profile creation. Use "
+        "the separate avatar endpoints to upload, replace or remove an avatar."
+    ),
+    responses=UPDATE_PROFILE_RESPONSES,
 )
 async def update_profile(
-    user_id: Annotated[int, Path(ge=1)],
-    profile_data: ProfileUpdateSchema,
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user who owns the profile.", examples=[17]),
+    ],
+    profile_data: Annotated[
+        ProfileUpdateSchema,
+        Body(
+            description=(
+                "Fields to update. Omitted fields remain unchanged. "
+                "Explicit null values and unknown fields are rejected. "
+                "An empty object is allowed. Avatar updates use the separate avatar endpoint."
+            ),
+            openapi_examples=PROFILE_UPDATE_EXAMPLES,
+        ),
+    ],
     current_user: UserModel = Depends(get_current_user),
     s3_client: S3StorageInterface = Depends(get_s3_storage_client),
     db: AsyncSession = Depends(get_db),
@@ -258,9 +317,24 @@ async def update_profile(
     "/users/{user_id}/profile/avatar/",
     response_model=ProfileResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Upload or replace a profile avatar",
+    description=(
+        "Upload a required avatar file using multipart/form-data. Access is "
+        "restricted to the profile owner and administrators. The image must be "
+        "a non-empty valid JPEG or PNG file up to 1 MiB (1,048,576 bytes). The "
+        "new object is uploaded before its key is saved. If database saving "
+        "fails, removal of the new object is attempted. After a successful "
+        "save, removal of the previous object is attempted. Failure to remove "
+        "the old object is logged, the updated profile is still returned, and "
+        "no automatic retry is scheduled."
+    ),
+    responses=UPDATE_AVATAR_RESPONSES,
 )
 async def update_avatar(
-    user_id: Annotated[int, Path(ge=1)],
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user who owns the profile.", examples=[17]),
+    ],
     avatar_data: ProfileAvatarUpdateSchema = Depends(
         ProfileAvatarUpdateSchema.as_form,
     ),
@@ -323,9 +397,23 @@ async def update_avatar(
     "/users/{user_id}/profile/avatar/",
     response_model=ProfileResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Remove a profile avatar",
+    description=(
+        "Clear the avatar reference while keeping the profile and user account. "
+        "Access is restricted to the profile owner and administrators. If the "
+        "profile already has no avatar, the operation still succeeds and "
+        "returns avatar: null. Avatar storage cleanup is attempted after the "
+        "database change is committed. A cleanup failure is logged and does not "
+        "change the successful response. There is no automatic retry, an "
+        "unremoved public object may remain accessible by its old URL."
+    ),
+    responses=DELETE_AVATAR_RESPONSES,
 )
 async def delete_avatar(
-    user_id: Annotated[int, Path(ge=1)],
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user who owns the profile.", examples=[17]),
+    ],
     current_user: UserModel = Depends(get_current_user),
     s3_client: S3StorageInterface = Depends(get_s3_storage_client),
     db: AsyncSession = Depends(get_db),
@@ -384,9 +472,24 @@ async def delete_avatar(
     "/users/{user_id}/profile/",
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
+    summary="Delete a user profile",
+    description=(
+        "Delete the profile while preserving the user account, credentials and "
+        "group membership. Access is restricted to the profile owner and "
+        "administrators. Return 204 without a response body. Repeated deletion "
+        "returns 404 because the profile no longer exists. Avatar storage "
+        "cleanup is attempted after the database change is committed. A cleanup "
+        "failure is logged and does not change the successful response. There "
+        "is no automatic retry, an unremoved public object may remain "
+        "accessible by its old URL."
+    ),
+    responses=DELETE_PROFILE_RESPONSES,
 )
 async def delete_profile(
-    user_id: Annotated[int, Path(ge=1)],
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user who owns the profile.", examples=[17]),
+    ],
     current_user: UserModel = Depends(get_current_user),
     s3_client: S3StorageInterface = Depends(get_s3_storage_client),
     db: AsyncSession = Depends(get_db),
