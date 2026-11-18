@@ -28,6 +28,12 @@ from schemas.movies import (
     MovieListResponseSchema,
     MovieUpdateSchema,
 )
+from schemas.profiles import (
+    ProfileAvatarUpdateSchema,
+    ProfileRequestSchema,
+    ProfileResponseSchema,
+    ProfileUpdateSchema,
+)
 from schemas.stars import (
     StarCreateSchema,
     StarListResponseSchema,
