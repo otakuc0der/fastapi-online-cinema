@@ -11,3 +11,9 @@ class UserProfileAlreadyExistsError(BaseProfileError):
     """The user already has a profile."""
 
     default_message = "User already has a profile."
+
+
+class UserProfileNotFoundError(BaseProfileError):
+    """The user does not have a profile."""
+
+    default_message = "User profile not found."
