@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Body,
     Depends,
     HTTPException,
     Path,
@@ -52,6 +53,30 @@ from schemas.accounts import (
     UserRegistrationRequestSchema,
     UserRegistrationResponseSchema,
 )
+from schemas.examples.accounts import (
+    ACTIVATE_ACCOUNT_REQUEST_EXAMPLES,
+    ACTIVATE_ACCOUNT_RESPONSES,
+    ADMIN_ACTIVATE_ACCOUNT_RESPONSES,
+    ADMIN_CHANGE_GROUP_REQUEST_EXAMPLES,
+    ADMIN_CHANGE_GROUP_RESPONSES,
+    CHANGE_PASSWORD_REQUEST_EXAMPLES,
+    CHANGE_PASSWORD_RESPONSES,
+    GET_CURRENT_ACCOUNT_RESPONSES,
+    LOGIN_REQUEST_EXAMPLES,
+    LOGIN_RESPONSES,
+    LOGOUT_REQUEST_EXAMPLES,
+    LOGOUT_RESPONSES,
+    REFRESH_TOKEN_REQUEST_EXAMPLES,
+    REFRESH_TOKEN_RESPONSES,
+    REGISTER_REQUEST_EXAMPLES,
+    REGISTER_RESPONSES,
+    REQUEST_PASSWORD_RESET_REQUEST_EXAMPLES,
+    REQUEST_PASSWORD_RESET_RESPONSES,
+    RESEND_ACTIVATION_REQUEST_EXAMPLES,
+    RESEND_ACTIVATION_RESPONSES,
+    RESET_PASSWORD_REQUEST_EXAMPLES,
+    RESET_PASSWORD_RESPONSES,
+)
 from security.dependencies import get_current_admin, get_current_user
 from security.interfaces import JWTAuthManagerInterface
 from services.account_crud import (
@@ -77,11 +102,27 @@ router = APIRouter()
     "/register/",
     response_model=UserRegistrationResponseSchema,
     status_code=status.HTTP_201_CREATED,
+    summary="Register an account",
+    description=(
+        "Register using an email and password. The email must be unique and the "
+        "password must satisfy the request schema validation. The new account "
+        "requires activation before login. A 24-hour activation token is created "
+        "and activation email sending is scheduled using BackgroundTasks.\n\nThe "
+        "email link carries the token as a query parameter. The activation API "
+        "accepts email and token in a JSON POST body, opening the email link does "
+        "not itself perform this POST. Email delivery takes place after the "
+        "response, a successful registration response is not a delivery receipt."
+    ),
+    response_description="Created user account, activation email sending scheduled.",
+    responses=REGISTER_RESPONSES,
 )
 async def register(
     request: Request,
     background_tasks: BackgroundTasks,
-    user_data: UserRegistrationRequestSchema,
+    user_data: Annotated[
+        UserRegistrationRequestSchema,
+        Body(openapi_examples=REGISTER_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
     settings: BaseAppSettings = Depends(get_settings),
     email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
@@ -135,10 +176,25 @@ async def register(
     "/activate/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Activate an account",
+    description=(
+        "Activate an account using its email and activation token in an "
+        "application/json request body. A valid unexpired token is required, "
+        "activation tokens are valid for 24 hours after issuance. The service "
+        "activates the account and consumes the token. Invalid or expired tokens "
+        "and already active accounts return 400.\n\nAfter successful activation, "
+        "confirmation email sending is scheduled in BackgroundTasks. No Bearer "
+        "access token is required."
+    ),
+    response_description="Account activation confirmation.",
+    responses=ACTIVATE_ACCOUNT_RESPONSES,
 )
 async def activate_account(
     request: Request,
-    activation_data: UserActivationRequestSchema,
+    activation_data: Annotated[
+        UserActivationRequestSchema,
+        Body(openapi_examples=ACTIVATE_ACCOUNT_REQUEST_EXAMPLES),
+    ],
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     settings: BaseAppSettings = Depends(get_settings),
@@ -182,11 +238,27 @@ async def activate_account(
     "/activate/resend/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Request a new activation link",
+    description=(
+        "Submit an email to request renewal of an activation token. This supports "
+        "requesting a new link after the previous token expires. When the service "
+        "issues a new token, it is valid for another 24 hours and an activation "
+        "email is scheduled. If the service returns no token, no email is "
+        "scheduled.\n\nThe same success message is returned without confirming that "
+        "an account exists, requires activation or received a new email. No Bearer "
+        "access token is required. Scheduled email delivery runs after the "
+        "response."
+    ),
+    response_description="Generic activation request confirmation.",
+    responses=RESEND_ACTIVATION_RESPONSES,
 )
 async def resend_activation(
     request: Request,
     background_tasks: BackgroundTasks,
-    resend_data: UserActivationResendRequestSchema,
+    resend_data: Annotated[
+        UserActivationResendRequestSchema,
+        Body(openapi_examples=RESEND_ACTIVATION_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
     settings: BaseAppSettings = Depends(get_settings),
     email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator),
@@ -232,9 +304,25 @@ async def resend_activation(
     "/login/",
     response_model=UserLoginResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Log in",
+    description=(
+        "Authenticate using email and password in an application/json body. The "
+        "account must be active. A successful login returns an access token and a "
+        "refresh token. Use the access token in Authorization: Bearer <token> for "
+        "protected endpoints. Use the refresh token in the refresh request body to "
+        "obtain a new access token. Access token lifetime is shorter than refresh "
+        "token lifetime, exact lifetimes are configured by the "
+        "application.\n\nInvalid credentials return 401. An inactive account returns "
+        "403. This endpoint does not require an existing Bearer token."
+    ),
+    response_description="Access and refresh token pair.",
+    responses=LOGIN_RESPONSES,
 )
 async def login_user(
-    login_data: UserLoginRequestSchema,
+    login_data: Annotated[
+        UserLoginRequestSchema,
+        Body(openapi_examples=LOGIN_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
     jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
     settings: Settings = Depends(get_settings),
@@ -278,9 +366,23 @@ async def login_user(
     "/refresh/",
     response_model=TokenRefreshResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Refresh an access token",
+    description=(
+        "Provide a refresh token in an application/json body to obtain a new access "
+        "token without resubmitting the password. The refresh token must be valid, "
+        "unexpired and accepted by the token service, and its account must be "
+        "active. Only an access token is returned, this endpoint does not return a "
+        "rotated refresh token. No Bearer access token is required. Invalid or "
+        "expired refresh tokens return 401."
+    ),
+    response_description="New access token.",
+    responses=REFRESH_TOKEN_RESPONSES,
 )
 async def refresh_token(
-    refresh_token_data: TokenRefreshRequestSchema,
+    refresh_token_data: Annotated[
+        TokenRefreshRequestSchema,
+        Body(openapi_examples=REFRESH_TOKEN_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
     jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
 ) -> TokenRefreshResponseSchema:
@@ -326,9 +428,23 @@ async def refresh_token(
     "/logout/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Log out",
+    description=(
+        "Provide the refresh token in an application/json body. The service revokes "
+        "the stored refresh token so it cannot be used to obtain new access tokens. "
+        "This controller has no Bearer access-token dependency.\n\nRevoking a refresh "
+        "token does not immediately invalidate an already issued access token, that "
+        "token remains subject to its own expiration. Clients should discard their "
+        "locally stored tokens on logout."
+    ),
+    response_description="Logout confirmation.",
+    responses=LOGOUT_RESPONSES,
 )
 async def logout(
-    logout_data: UserLogoutRequestSchema,
+    logout_data: Annotated[
+        UserLogoutRequestSchema,
+        Body(openapi_examples=LOGOUT_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponseSchema:
     try:
@@ -352,6 +468,16 @@ async def logout(
     "/me/",
     response_model=UserCurrentResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Get the current account",
+    description=(
+        "Return the current active user identified by a valid Bearer access token. "
+        "No user ID or request body is required. The exact response fields are "
+        "defined by UserCurrentResponseSchema. Missing, malformed, invalid or "
+        "expired access credentials are rejected by authentication, inactive "
+        "accounts are forbidden."
+    ),
+    response_description="Authenticated account details.",
+    responses=GET_CURRENT_ACCOUNT_RESPONSES,
 )
 async def get_current_account(
     user: UserModel = Depends(get_current_user),
@@ -363,9 +489,24 @@ async def get_current_account(
     "/password/change/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Change the current password",
+    description=(
+        "Change the authenticated active user's password by supplying old_password "
+        "and new_password in an application/json body. The old password must be "
+        "correct and the new password must differ from the current one and satisfy "
+        "password validation. A valid Bearer access token is required.\n\nExisting "
+        "refresh tokens are revoked by the password-change service. Log in again "
+        "using the new password. This controller does not schedule a "
+        "password-change email."
+    ),
+    response_description="Password change confirmation.",
+    responses=CHANGE_PASSWORD_RESPONSES,
 )
 async def change_password(
-    password_data: PasswordChangeRequestSchema,
+    password_data: Annotated[
+        PasswordChangeRequestSchema,
+        Body(openapi_examples=CHANGE_PASSWORD_REQUEST_EXAMPLES),
+    ],
     user: UserModel = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponseSchema:
@@ -412,11 +553,28 @@ async def change_password(
     "/password/reset/request/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Request a password reset",
+    description=(
+        "Submit an email in an application/json body. If the service issues a reset "
+        "token for an existing active account, password reset email sending is "
+        "scheduled using BackgroundTasks. If the service returns no token, no email "
+        "is scheduled.\n\nThe same success message is returned without revealing "
+        "whether an active account exists or a new reset token was issued. No "
+        "Bearer access token or old password is required. Opening the emailed link "
+        "does not itself change the password, complete the reset through the "
+        "separate POST endpoint. A successful response is not an email delivery "
+        "receipt."
+    ),
+    response_description="Generic password reset request confirmation.",
+    responses=REQUEST_PASSWORD_RESET_RESPONSES,
 )
 async def request_password_reset(
     request: Request,
     background_tasks: BackgroundTasks,
-    password_reset_data: PasswordResetRequestSchema,
+    password_reset_data: Annotated[
+        PasswordResetRequestSchema,
+        Body(openapi_examples=REQUEST_PASSWORD_RESET_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
     settings: BaseAppSettings = Depends(get_settings),
     email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
@@ -463,11 +621,27 @@ async def request_password_reset(
     "/password/reset/complete/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Complete a password reset",
+    description=(
+        "Submit email, token and password in an application/json body. Use the "
+        "password reset token from the email. The service checks the account and "
+        "token, including expiration, before setting the new password. The new "
+        "password must differ from the current one and satisfy password validation. "
+        "No old password or Bearer access token is required.\n\nAfter a successful "
+        "reset the reset token is consumed, existing refresh tokens are revoked, "
+        "and confirmation email sending is scheduled in BackgroundTasks. Log in "
+        "using the new password."
+    ),
+    response_description="Password reset confirmation.",
+    responses=RESET_PASSWORD_RESPONSES,
 )
 async def reset_password(
     request: Request,
     background_tasks: BackgroundTasks,
-    password_data: PasswordResetCompleteRequestSchema,
+    password_data: Annotated[
+        PasswordResetCompleteRequestSchema,
+        Body(openapi_examples=RESET_PASSWORD_REQUEST_EXAMPLES),
+    ],
     db: AsyncSession = Depends(get_db),
     settings: BaseAppSettings = Depends(get_settings),
     email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
@@ -514,9 +688,21 @@ async def reset_password(
     "/admin/users/{user_id}/activate/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Activate an account as an administrator",
+    description=(
+        "Manually activate the account identified by user_id without requiring an "
+        "activation token. A valid Bearer access token for an active administrator "
+        "is required. A missing user returns 404, an already active account returns "
+        "400. This controller does not schedule an activation confirmation email."
+    ),
+    response_description="Administrator account activation confirmation.",
+    responses=ADMIN_ACTIVATE_ACCOUNT_RESPONSES,
 )
 async def admin_activate_account(
-    user_id: Annotated[int, Path(ge=1)],
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user to manage.", examples=[17]),
+    ],
     admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponseSchema:
@@ -559,10 +745,27 @@ async def admin_activate_account(
     "/admin/users/{user_id}/group/",
     response_model=MessageResponseSchema,
     status_code=status.HTTP_200_OK,
+    summary="Change a user group as an administrator",
+    description=(
+        "Set the group of the user identified by user_id. Send group in an "
+        "application/json body using user, moderator or admin. A valid Bearer "
+        "access token for an active administrator is required. A missing target "
+        "user returns 404. A valid group that is missing from the database is "
+        "treated as a server configuration error and returns 500. This endpoint "
+        "changes group membership and does not schedule an email."
+    ),
+    response_description="User group update confirmation.",
+    responses=ADMIN_CHANGE_GROUP_RESPONSES,
 )
 async def admin_change_user_group(
-    user_id: Annotated[int, Path(ge=1)],
-    group_data: UserGroupUpdateRequestSchema,
+    user_id: Annotated[
+        int,
+        Path(ge=1, description="ID of the user to manage.", examples=[17]),
+    ],
+    group_data: Annotated[
+        UserGroupUpdateRequestSchema,
+        Body(openapi_examples=ADMIN_CHANGE_GROUP_REQUEST_EXAMPLES),
+    ],
     admin: UserModel = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponseSchema:

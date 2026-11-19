@@ -9,6 +9,7 @@ PROFILE_EXAMPLE = {
     "avatar": "http://localhost:9000/cinema-storage/avatars/17-avatar-0123456789abcdef0123456789abcdef.jpg",
 }
 
+
 PROFILE_WITHOUT_AVATAR_EXAMPLE = {
     "id": 1,
     "user_id": 17,
@@ -19,6 +20,7 @@ PROFILE_WITHOUT_AVATAR_EXAMPLE = {
     "info": "I enjoy science fiction and classic movies.",
     "avatar": None,
 }
+
 
 VALIDATION_ERROR_SCHEMA = {
     "type": "object",
@@ -41,6 +43,7 @@ VALIDATION_ERROR_SCHEMA = {
     },
     "required": ["detail"],
 }
+
 
 COMMON_PROFILE_ERROR_RESPONSES = {
     401: {
@@ -66,6 +69,7 @@ COMMON_PROFILE_ERROR_RESPONSES = {
     },
 }
 
+
 PROFILE_UPDATE_EXAMPLES = {
     "update_info": {
         "summary": "Change only the biography",
@@ -77,6 +81,7 @@ PROFILE_UPDATE_EXAMPLES = {
     },
     "empty_update": {"summary": "Leave all fields unchanged", "value": {}},
 }
+
 
 GET_PROFILE_RESPONSES = {
     **COMMON_PROFILE_ERROR_RESPONSES,
@@ -150,6 +155,7 @@ GET_PROFILE_RESPONSES = {
         },
     },
 }
+
 
 CREATE_PROFILE_RESPONSES = {
     **COMMON_PROFILE_ERROR_RESPONSES,
@@ -239,6 +245,7 @@ CREATE_PROFILE_RESPONSES = {
     },
 }
 
+
 UPDATE_PROFILE_RESPONSES = {
     **COMMON_PROFILE_ERROR_RESPONSES,
     422: {
@@ -294,7 +301,10 @@ UPDATE_PROFILE_RESPONSES = {
                             "gender": "woman",
                             "date_of_birth": "2000-05-15",
                             "info": "I enjoy documentaries and independent cinema.",
-                            "avatar": "http://localhost:9000/cinema-storage/avatars/17-avatar-0123456789abcdef0123456789abcdef.jpg",
+                            "avatar": (
+                                "http://localhost:9000/cinema-storage/avatars/"
+                                "17-avatar-0123456789abcdef0123456789abcdef.jpg"
+                            ),
                         },
                     }
                 }
@@ -328,6 +338,7 @@ UPDATE_PROFILE_RESPONSES = {
         },
     },
 }
+
 
 UPDATE_AVATAR_RESPONSES = {
     **COMMON_PROFILE_ERROR_RESPONSES,
@@ -413,6 +424,7 @@ UPDATE_AVATAR_RESPONSES = {
     },
 }
 
+
 DELETE_AVATAR_RESPONSES = {
     **COMMON_PROFILE_ERROR_RESPONSES,
     422: {
@@ -484,6 +496,7 @@ DELETE_AVATAR_RESPONSES = {
         },
     },
 }
+
 
 DELETE_PROFILE_RESPONSES = {
     **COMMON_PROFILE_ERROR_RESPONSES,

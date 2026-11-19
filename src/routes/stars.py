@@ -23,8 +23,13 @@ from schemas import (
     StarSchema,
     StarUpdateSchema,
 )
-from schemas.examples.security import moderator_error_responses
-from schemas.examples.stars import star_updated_response_example
+from schemas.examples.stars import (
+    CREATE_STAR_RESPONSES,
+    DELETE_STAR_RESPONSES,
+    GET_STAR_RESPONSES,
+    LIST_STARS_RESPONSES,
+    UPDATE_STAR_RESPONSES,
+)
 from security.dependencies import get_current_moderator
 from services.star_crud import (
     count_star_records,
@@ -55,27 +60,7 @@ router = APIRouter()
     ),
     response_description="Actor page with totals and navigation links.",
     status_code=status.HTTP_200_OK,
-    responses={
-        404: {
-            "description": "No actors exist on the requested page.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "No stars found on the requested page.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": (
-                "Page must be an integer greater than zero. "
-                "Per_page must be an integer from 1 to 20."
-            ),
-        },
-        500: {
-            "description": "The actor list could not be loaded.",
-        },
-    },
+    responses=LIST_STARS_RESPONSES,
 )
 async def list_stars(
     request: Request,
@@ -163,24 +148,7 @@ async def list_stars(
     ),
     response_description="Actor ID and name.",
     status_code=status.HTTP_200_OK,
-    responses={
-        404: {
-            "description": "The actor does not exist.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "Star with ID 9999 was not found.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": "Star ID must be an integer greater than zero.",
-        },
-        500: {
-            "description": "Actor details could not be loaded.",
-        },
-    },
+    responses=GET_STAR_RESPONSES,
 )
 async def get_star(
     star_id: Annotated[
@@ -234,28 +202,7 @@ async def get_star(
     ),
     response_description="Created actor with its generated ID.",
     status_code=status.HTTP_201_CREATED,
-    responses={
-        **moderator_error_responses,
-        409: {
-            "description": "An actor record with the same name already exists.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "A star with the same name already exists.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": (
-                "Name is missing, is not a string, is blank after trimming, "
-                "or exceeds 100 characters; or unknown fields were supplied."
-            ),
-        },
-        500: {
-            "description": "The actor could not be created.",
-        },
-    },
+    responses=CREATE_STAR_RESPONSES,
 )
 async def create_star(
     star_data: StarCreateSchema,
@@ -307,38 +254,7 @@ async def create_star(
     ),
     response_description="Actor with the updated name.",
     status_code=status.HTTP_200_OK,
-    responses={
-        **moderator_error_responses,
-        200: {
-            "content": {
-                "application/json": {
-                    "example": star_updated_response_example,
-                },
-            },
-        },
-        404: {
-            "description": "The actor does not exist.",
-        },
-        409: {
-            "description": "Another actor record already has the requested name.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "A star with the same name already exists.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": (
-                "Invalid star ID or name. Name is required and must contain "
-                "1–100 characters after trimming. Unknown fields are rejected."
-            ),
-        },
-        500: {
-            "description": "The actor could not be updated.",
-        },
-    },
+    responses=UPDATE_STAR_RESPONSES,
 )
 async def update_star(
     star_id: Annotated[
@@ -402,21 +318,7 @@ async def update_star(
         "or administrator."
     ),
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={
-        **moderator_error_responses,
-        204: {
-            "description": "Actor deleted. No response body.",
-        },
-        404: {
-            "description": "The actor does not exist.",
-        },
-        422: {
-            "description": "Star ID must be an integer greater than zero.",
-        },
-        500: {
-            "description": "The actor could not be deleted.",
-        },
-    },
+    responses=DELETE_STAR_RESPONSES,
 )
 async def delete_star(
     star_id: Annotated[

@@ -1,4 +1,7 @@
+from fastapi import status
+
 from schemas.examples.genres import genre_schema_example
+from schemas.examples.security import moderator_error_responses
 from schemas.examples.stars import star_schema_example
 
 certification_schema_example = {
@@ -129,4 +132,260 @@ movie_search_response_example = {
     "next_page": None,
     "total_pages": 1,
     "total_items": 1,
+}
+
+
+LIST_MOVIES_RESPONSES = {
+    status.HTTP_200_OK: {
+        "content": {
+            "application/json": {
+                "examples": {
+                    "catalog": {
+                        "summary": "Without filters",
+                        "description": (
+                            "page=1, per_page=1. Default ordering: -id. "
+                            "Illustrative data and totals."
+                        ),
+                        "value": movie_list_response_example,
+                    },
+                    "related_filters": {
+                        "summary": "Genre, actor, director and certification",
+                        "description": (
+                            "page=1, per_page=1, genre=Action, "
+                            "star=Leonardo DiCaprio, director=Christopher Nolan, "
+                            "certification=PG-13. All filters apply together. "
+                            "Illustrative data and totals."
+                        ),
+                        "value": movie_related_filters_response_example,
+                    },
+                    "filtered_catalog": {
+                        "summary": "Year and IMDb range",
+                        "description": (
+                            "page=1, per_page=1, year=2010, "
+                            "imdb_min=8, imdb_max=9. "
+                            "Illustrative data and totals."
+                        ),
+                        "value": movie_filtered_list_response_example,
+                    },
+                    "ordered_catalog": {
+                        "summary": "Price ascending, then year descending",
+                        "description": (
+                            "page=1, per_page=1, ordering=price,-year. "
+                            "Descending ID resolves remaining ties. "
+                            "Illustrative data and totals."
+                        ),
+                        "value": movie_ordered_list_response_example,
+                    },
+                    "search_results": {
+                        "summary": "Search by part of a movie title",
+                        "description": (
+                            "page=1, per_page=1, search=incep. "
+                            "Matches Inception by title. "
+                            "Illustrative data and totals."
+                        ),
+                        "value": movie_search_response_example,
+                    },
+                },
+            },
+        },
+    },
+    status.HTTP_404_NOT_FOUND: {
+        "description": (
+            "No movies on the requested page for the supplied filters and search."
+        ),
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": (
+                        "No movies found on this page "
+                        "for the supplied filters and search."
+                    ),
+                },
+            },
+        },
+    },
+    status.HTTP_422_UNPROCESSABLE_CONTENT: {
+        "description": (
+            "Invalid parameters. Page and genre_id must be integers greater than "
+            "or equal to 1. Per_page must be an integer from 1 to 20. "
+            "Year must be an integer from 1900 to the current year. "
+            "IMDb bounds must be numbers from 0 to 10. When both are supplied, "
+            "imdb_min must not exceed imdb_max. "
+            "Name filters and search must contain non-whitespace text. "
+            "Ordering accepts comma-separated fields: id, price, year, imdb and votes, "
+            "optionally prefixed with '-' for descending order. "
+            "Empty ordering items, unsupported fields and repeated fields are rejected."
+        ),
+    },
+    status.HTTP_500_INTERNAL_SERVER_ERROR: {
+        "description": "The movie catalog could not be loaded.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": (
+                        "Unable to load the movie catalog. " "Please try again later."
+                    ),
+                },
+            },
+        },
+    },
+}
+
+
+GET_MOVIE_RESPONSES = {
+    200: {
+        "content": {
+            "application/json": {
+                "example": movie_detail_example,
+            },
+        },
+    },
+    404: {
+        "description": "No movie exists with this ID.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Movie with ID 1001 was not found.",
+                },
+            },
+        },
+    },
+    422: {
+        "description": "Movie ID must be an integer greater than or equal to 1.",
+    },
+    500: {
+        "description": "Movie details could not be loaded.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Unable to load movie details. Please try again later.",
+                },
+            },
+        },
+    },
+}
+
+
+CREATE_MOVIE_RESPONSES = {
+    **moderator_error_responses,
+    201: {
+        "content": {
+            "application/json": {
+                "example": movie_detail_example,
+            },
+        },
+    },
+    409: {
+        "description": "The name, release year and duration match another movie.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "A movie with the same name, release year and duration already exists.",
+                },
+            },
+        },
+    },
+    422: {
+        "description": (
+            "Invalid or missing fields. Year must be from 1900 to the current year. "
+            "Duration must be positive. IMDb must be from 0 to 10, and meta_score "
+            "from 0 to 100. Votes, gross and price must be non-negative. "
+            "Price allows up to eight integer digits and two decimal places. "
+            "Movie name must contain 1–250 characters after trimming. "
+            "Description must not be blank. Related names must contain "
+            "1–100 characters after trimming. Duplicate names within each relation "
+            "list are rejected regardless of case. Unknown fields are rejected. "
+            "Only meta_score and gross accept null."
+        ),
+    },
+    500: {
+        "description": "The movie could not be created or its response could not be loaded.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Unable to create the movie. Please try again later.",
+                },
+            },
+        },
+    },
+}
+
+
+UPDATE_MOVIE_RESPONSES = {
+    **moderator_error_responses,
+    200: {
+        "content": {
+            "application/json": {
+                "example": movie_updated_detail_example,
+            },
+        },
+    },
+    404: {
+        "description": "No movie exists with this ID.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Movie with ID 1001 was not found.",
+                },
+            },
+        },
+    },
+    409: {
+        "description": "The name, release year and duration match another movie.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "A movie with the same name, release year and duration already exists.",
+                },
+            },
+        },
+    },
+    422: {
+        "description": (
+            "Invalid ID or update data: empty body, unknown fields, "
+            "invalid values, or null supplied for a field other than "
+            "meta_score or gross."
+        ),
+    },
+    500: {
+        "description": "The movie could not be updated.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Unable to update the movie. Please try again later.",
+                },
+            },
+        },
+    },
+}
+
+
+DELETE_MOVIE_RESPONSES = {
+    **moderator_error_responses,
+    204: {
+        "description": "Movie deleted successfully. The response body is empty.",
+    },
+    404: {
+        "description": "No movie exists with this ID.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Movie with ID 1001 was not found.",
+                },
+            },
+        },
+    },
+    422: {
+        "description": "Movie ID must be an integer greater than or equal to 1.",
+    },
+    500: {
+        "description": "The movie could not be deleted.",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Unable to delete the movie. Please try again later.",
+                },
+            },
+        },
+    },
 }

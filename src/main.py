@@ -12,8 +12,8 @@ tags_metadata = [
     {
         "name": "movies",
         "description": (
-            "Browse, search, filter and sort the movie catalog. "
-            "View movie details and manage movie records."
+            "Browse, search, filter and sort movies. "
+            "View details and manage catalog records."
         ),
     },
     {
@@ -32,20 +32,26 @@ tags_metadata = [
     },
     {
         "name": "accounts",
-        "description": "Register user accounts with email and password.",
+        "description": (
+            "Register and activate accounts, manage authentication and passwords. "
+            "Activate users and change their groups as an administrator."
+        ),
     },
     {
         "name": "profiles",
         "description": (
-            "Create, view, update and delete user profiles. "
-            "Upload, replace and remove profile avatars."
+            "Create, view, update and delete profiles. "
+            "Upload, replace and remove avatars."
         ),
     },
 ]
 
 app = FastAPI(
     title="Online Cinema API",
-    description="Online cinema API with a movie catalog, user accounts\n\n",
+    description=(
+        "Movie catalog with search, filtering and sorting, "
+        "user authentication, role-based access and profiles with avatars."
+    ),
     version="0.1.0",
     openapi_tags=tags_metadata,
     swagger_ui_parameters={
