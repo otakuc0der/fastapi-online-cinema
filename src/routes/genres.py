@@ -20,10 +20,12 @@ from schemas import (
     GenreUpdateSchema,
 )
 from schemas.examples.genres import (
-    genre_list_response_example,
-    genre_updated_response_example,
+    CREATE_GENRE_RESPONSES,
+    DELETE_GENRE_RESPONSES,
+    GET_GENRE_RESPONSES,
+    LIST_GENRES_RESPONSES,
+    UPDATE_GENRE_RESPONSES,
 )
-from schemas.examples.security import moderator_error_responses
 from security.dependencies import get_current_moderator
 from services.genre_crud import (
     create_genre_record,
@@ -53,27 +55,7 @@ router = APIRouter()
     ),
     response_description="Genre list with movie counts.",
     status_code=status.HTTP_200_OK,
-    responses={
-        200: {
-            "content": {
-                "application/json": {
-                    "example": genre_list_response_example,
-                },
-            },
-        },
-        500: {
-            "description": "The genre list could not be loaded.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": (
-                            "Unable to load the genre list. " "Please try again later."
-                        ),
-                    },
-                },
-            },
-        },
-    },
+    responses=LIST_GENRES_RESPONSES,
 )
 async def list_genres(
     db: AsyncSession = Depends(get_db),
@@ -112,24 +94,7 @@ async def list_genres(
     ),
     response_description="Genre ID and name.",
     status_code=status.HTTP_200_OK,
-    responses={
-        404: {
-            "description": "The genre does not exist.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "Genre with ID 9999 was not found.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": "Genre ID must be an integer greater than zero.",
-        },
-        500: {
-            "description": "Genre details could not be loaded.",
-        },
-    },
+    responses=GET_GENRE_RESPONSES,
 )
 async def get_genre(
     genre_id: Annotated[
@@ -184,28 +149,7 @@ async def get_genre(
     ),
     response_description="Created genre with its generated ID.",
     status_code=status.HTTP_201_CREATED,
-    responses={
-        **moderator_error_responses,
-        409: {
-            "description": "A genre with the same name already exists.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "A genre with the same name already exists.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": (
-                "Name is missing, is not a string, is blank after trimming, "
-                "or exceeds 100 characters; or unknown fields were supplied."
-            ),
-        },
-        500: {
-            "description": "The genre could not be created.",
-        },
-    },
+    responses=CREATE_GENRE_RESPONSES,
 )
 async def create_genre(
     genre_data: GenreCreateSchema,
@@ -257,38 +201,7 @@ async def create_genre(
     ),
     response_description="Genre with the updated name.",
     status_code=status.HTTP_200_OK,
-    responses={
-        **moderator_error_responses,
-        200: {
-            "content": {
-                "application/json": {
-                    "example": genre_updated_response_example,
-                },
-            },
-        },
-        404: {
-            "description": "The genre does not exist.",
-        },
-        409: {
-            "description": "Another genre already has the requested name.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "detail": "A genre with the same name already exists.",
-                    },
-                },
-            },
-        },
-        422: {
-            "description": (
-                "Invalid genre ID or name. Name is required and must contain "
-                "1–100 characters after trimming. Unknown fields are rejected."
-            ),
-        },
-        500: {
-            "description": "The genre could not be updated.",
-        },
-    },
+    responses=UPDATE_GENRE_RESPONSES,
 )
 async def update_genre(
     genre_id: Annotated[
@@ -352,21 +265,7 @@ async def update_genre(
         "or administrator."
     ),
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={
-        **moderator_error_responses,
-        204: {
-            "description": "Genre deleted. No response body.",
-        },
-        404: {
-            "description": "The genre does not exist.",
-        },
-        422: {
-            "description": "Genre ID must be an integer greater than zero.",
-        },
-        500: {
-            "description": "The genre could not be deleted.",
-        },
-    },
+    responses=DELETE_GENRE_RESPONSES,
 )
 async def delete_genre(
     genre_id: Annotated[
