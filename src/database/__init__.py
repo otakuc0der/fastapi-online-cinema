@@ -14,6 +14,8 @@ from database.models.movies import (
     DirectorModel,
     GenreModel,
     MovieModel,
+    MovieReactionEnum,
+    MovieReactionModel,
     StarModel,
     movie_directors,
     movie_genres,

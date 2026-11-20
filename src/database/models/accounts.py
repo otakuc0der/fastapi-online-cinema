@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
     Date,
@@ -19,6 +19,9 @@ from database.models.base import Base
 from database.validators import accounts as validators
 from security.passwords import hash_password, verify_password
 from services.utils import generate_secure_token
+
+if TYPE_CHECKING:
+    from database.models.movies import MovieReactionModel
 
 
 class UserGroupEnum(str, Enum):
@@ -95,6 +98,12 @@ class UserModel(Base):
 
     refresh_tokens: Mapped[List["RefreshTokenModel"]] = relationship(
         "RefreshTokenModel", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    reactions: Mapped[list["MovieReactionModel"]] = relationship(
+        "MovieReactionModel",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):

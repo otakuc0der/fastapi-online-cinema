@@ -16,7 +16,11 @@ from exceptions.email import (
     EmailTemplateError,
 )
 from exceptions.genres import GenreAlreadyExistsError
-from exceptions.movies import MovieAlreadyExistsError
+from exceptions.movies import (
+    BaseMovieError,
+    MovieAlreadyExistsError,
+    MovieNotFoundError,
+)
 from exceptions.profiles import (
     UserProfileAlreadyExistsError,
     UserProfileNotFoundError,
