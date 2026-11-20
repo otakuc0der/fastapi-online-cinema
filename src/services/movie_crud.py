@@ -284,9 +284,7 @@ async def create_movie_record(
         movie_time=movie_data.time,
     )
     if already_exists:
-        raise MovieAlreadyExistsError(
-            "A movie with the same name, release year and duration already exists."
-        )
+        raise MovieAlreadyExistsError()
 
     try:
         certification = await get_or_create_named_entity(
@@ -320,9 +318,7 @@ async def create_movie_record(
         await db.rollback()
         constraint_name = getattr(error.orig.__cause__, "constraint_name", None)
         if constraint_name == "unique_movie_constraint":
-            raise MovieAlreadyExistsError(
-                "A movie with the same name, release year and duration already exists."
-            )
+            raise MovieAlreadyExistsError()
         raise
 
     except SQLAlchemyError:
@@ -355,9 +351,7 @@ async def update_movie_record(
                 exclude_movie_id=movie.id,
             )
             if already_exists:
-                raise MovieAlreadyExistsError(
-                    "A movie with the same name, release year and duration already exists."
-                )
+                raise MovieAlreadyExistsError()
         for field_name, value in changes.items():
             setattr(movie, field_name, value)
         await db.commit()
@@ -367,9 +361,7 @@ async def update_movie_record(
         await db.rollback()
         constraint_name = getattr(error.orig.__cause__, "constraint_name", None)
         if constraint_name == "unique_movie_constraint":
-            raise MovieAlreadyExistsError(
-                "A movie with the same name, release year and duration already exists."
-            )
+            raise MovieAlreadyExistsError()
         raise
 
     except MovieAlreadyExistsError, SQLAlchemyError:
