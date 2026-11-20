@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Optional
+from enum import Enum
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     DECIMAL,
     Column,
+    Enum as SQLEnum,
     Float,
     ForeignKey,
     Integer,
@@ -19,6 +21,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.models.base import Base
+
+if TYPE_CHECKING:
+    from database.models.accounts import UserModel
+
 
 movie_stars = Table(
     "movie_stars",
@@ -177,6 +183,12 @@ class MovieModel(Base):
         back_populates="movies",
     )
 
+    reactions: Mapped[list["MovieReactionModel"]] = relationship(
+        "MovieReactionModel",
+        back_populates="movie",
+        cascade="all, delete-orphan",
+    )
+
     __table_args__ = (
         UniqueConstraint("name", "year", "time", name="unique_movie_constraint"),
     )
@@ -187,3 +199,53 @@ class MovieModel(Base):
 
     def __repr__(self) -> str:
         return f"<Movie(id={self.id}, " f"name='{self.name}', year={self.year})>"
+
+
+class MovieReactionEnum(str, Enum):
+    LIKE = "like"
+    DISLIKE = "dislike"
+
+
+class MovieReactionModel(Base):
+    __tablename__ = "movie_reactions"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reaction: Mapped[MovieReactionEnum] = mapped_column(
+        SQLEnum(MovieReactionEnum),
+        nullable=False,
+    )
+
+    user: Mapped["UserModel"] = relationship(
+        "UserModel",
+        back_populates="reactions",
+    )
+    movie: Mapped["MovieModel"] = relationship(
+        "MovieModel",
+        back_populates="reactions",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "movie_id",
+            name="unique_user_movie_reaction",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<MovieReactionModel(id={self.id}, "
+            f"user_id={self.user_id}, movie_id={self.movie_id}, "
+            f"reaction={self.reaction})>"
+        )
