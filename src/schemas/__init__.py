@@ -21,6 +21,12 @@ from schemas.genres import (
     GenreSchema,
     GenreUpdateSchema,
 )
+from schemas.movie_reactions import (
+    MovieReactionCurrentResponseSchema,
+    MovieReactionRequestSchema,
+    MovieReactionResponseSchema,
+    MovieReactionSummarySchema,
+)
 from schemas.movies import (
     MovieBaseSchema,
     MovieCreateSchema,
