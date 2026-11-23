@@ -1,15 +1,11 @@
-import datetime
 import logging
-import math
 from typing import Annotated
-from urllib.parse import urlencode
 
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     Path,
-    Query,
     Request,
     Response,
     status,
@@ -19,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from exceptions import MovieAlreadyExistsError
+from routes.dependencies.movies import MovieListParams, get_movie_list_params
+from routes.movie_listing import build_movie_page_response
 from schemas import (
-    MovieBaseSchema,
     MovieCreateSchema,
     MovieDetailSchema,
     MovieListResponseSchema,
@@ -35,11 +32,8 @@ from schemas.examples.movies import (
 )
 from security.dependencies import get_current_moderator
 from services.movie_crud import (
-    build_movie_ordering,
-    count_movies,
     create_movie_record,
     delete_movie_record,
-    get_movie_page,
     get_movie_record,
     update_movie_record,
 )
@@ -47,24 +41,6 @@ from services.movie_crud import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def normalize_optional_text(
-    value: str | None,
-    error_message: str,
-) -> str | None:
-    if value is None:
-        return None
-
-    cleaned_value = value.strip()
-
-    if not cleaned_value:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=error_message,
-        )
-
-    return cleaned_value
 
 
 @router.get(
@@ -99,282 +75,27 @@ def normalize_optional_text(
 )
 async def list_movies(
     request: Request,
-    year: Annotated[
-        int | None,
-        Query(
-            title="Release year",
-            description="Exact release year, from 1900 to the current year. Optional.",
-            ge=1900,
-        ),
-    ] = None,
-    imdb_min: Annotated[
-        float | None,
-        Query(
-            title="Minimum IMDb rating",
-            description=(
-                "Inclusive minimum, from 0 to 10. Optional. "
-                "Must not exceed imdb_max when both are provided."
-            ),
-            ge=0,
-            le=10,
-        ),
-    ] = None,
-    imdb_max: Annotated[
-        float | None,
-        Query(
-            title="Maximum IMDb rating",
-            description=(
-                "Inclusive maximum, from 0 to 10. Optional. "
-                "Must not be less than imdb_min when both are provided."
-            ),
-            ge=0,
-            le=10,
-        ),
-    ] = None,
-    genre_id: Annotated[
-        int | None,
-        Query(
-            title="Genre ID",
-            description=(
-                "Filter movies by an associated genre ID. Must be at least 1. "
-                "Combines with all other filters. If genre is also supplied, "
-                "both conditions must match, possibly through different genres. "
-                "An unknown ID or no matching movies returns 404."
-            ),
-            ge=1,
-            examples=[1],
-        ),
-    ] = None,
-    genre: Annotated[
-        str | None,
-        Query(
-            title="Genre name",
-            description=(
-                "Exact genre name, ignoring case and surrounding whitespace. Optional."
-            ),
-            examples=["Drama"],
-        ),
-    ] = None,
-    star: Annotated[
-        str | None,
-        Query(
-            title="Actor name",
-            description=(
-                "Exact actor name, ignoring case and surrounding whitespace. Optional."
-            ),
-            examples=["Tom Hanks"],
-        ),
-    ] = None,
-    director: Annotated[
-        str | None,
-        Query(
-            title="Director name",
-            description=(
-                "Exact director name, ignoring case and surrounding whitespace. Optional."
-            ),
-            examples=["Christopher Nolan"],
-        ),
-    ] = None,
-    certification: Annotated[
-        str | None,
-        Query(
-            title="Certification name",
-            description=(
-                "Exact certification name, ignoring case and surrounding whitespace. "
-                "Optional."
-            ),
-            examples=["PG-13"],
-        ),
-    ] = None,
-    ordering: Annotated[
-        str | None,
-        Query(
-            title="Movie ordering",
-            description=(
-                "Comma-separated fields in priority order: id, price, year, imdb, "
-                "votes (vote count). Ascending by default; prefix with '-' for "
-                "descending. Surrounding whitespace is ignored. Empty items and "
-                "repeated fields are rejected. Default: -id. Descending ID is added "
-                "as a final tie-breaker unless ID is supplied."
-            ),
-            examples=["price,-year", "-votes", "-imdb,price"],
-        ),
-    ] = None,
-    search: Annotated[
-        str | None,
-        Query(
-            title="Movie search",
-            description=(
-                "Case-insensitive partial match in the title, description, actor "
-                "or director names. A match in any field is sufficient. "
-                "The text is matched as one phrase; surrounding whitespace is "
-                "ignored. % and _ are literal characters. Must not be blank. "
-                "If omitted, no text search is applied."
-            ),
-            examples=["incep", "dream", "DiCaprio", "Nolan"],
-        ),
-    ] = None,
-    page: Annotated[
-        int,
-        Query(
-            title="Page number",
-            description="Page number, starting from 1. Default: 1.",
-            ge=1,
-        ),
-    ] = 1,
-    per_page: Annotated[
-        int,
-        Query(
-            title="Movies per page",
-            description="Movies per page, from 1 to 20. Default: 10.",
-            ge=1,
-            le=20,
-        ),
-    ] = 10,
+    params: Annotated[MovieListParams, Depends(get_movie_list_params)],
     db: AsyncSession = Depends(get_db),
 ) -> MovieListResponseSchema:
-    """Validate filters, search and ordering, then return a page with navigation."""
-    current_year = datetime.date.today().year
-
-    if year is not None and year > current_year:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                f"Release year cannot be later than the current year ({current_year})."
-            ),
-        )
-
-    if imdb_min is not None and imdb_max is not None and imdb_min > imdb_max:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                "Minimum IMDb rating (imdb_min) cannot be greater than "
-                "maximum IMDb rating (imdb_max)."
-            ),
-        )
-
-    name_filters = {
-        field_name: normalize_optional_text(
-            value,
-            error_message=(
-                f"Filter '{field_name}' must not be empty "
-                "or contain only whitespace."
-            ),
-        )
-        for field_name, value in {
-            "genre": genre,
-            "star": star,
-            "director": director,
-            "certification": certification,
-        }.items()
-    }
-
-    genre = name_filters["genre"]
-    star = name_filters["star"]
-    director = name_filters["director"]
-    certification = name_filters["certification"]
-
     try:
-        ordering_expressions = build_movie_ordering(ordering)
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(error),
-        ) from error
-
-    search = normalize_optional_text(
-        search,
-        error_message="Search query must not be empty or contain only whitespace.",
-    )
-
-    try:
-        movies = await get_movie_page(
+        return await build_movie_page_response(
+            request=request,
             db=db,
-            page=page,
-            per_page=per_page,
-            ordering_expressions=ordering_expressions,
-            year=year,
-            imdb_min=imdb_min,
-            imdb_max=imdb_max,
-            genre=genre,
-            star=star,
-            director=director,
-            certification=certification,
-            search=search,
-            genre_id=genre_id,
-        )
-
-        if not movies:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    "No movies found on this page "
-                    "for the supplied filters and search."
-                ),
-            )
-
-        total_items = await count_movies(
-            db=db,
-            year=year,
-            imdb_min=imdb_min,
-            imdb_max=imdb_max,
-            genre=genre,
-            star=star,
-            director=director,
-            certification=certification,
-            search=search,
-            genre_id=genre_id,
-        )
-        total_pages = math.ceil(total_items / per_page)
-
-        router_path = request.url.path
-
-        query_params = {
-            "per_page": per_page,
-            "page": page,
-            "year": year,
-            "imdb_min": imdb_min,
-            "imdb_max": imdb_max,
-            **name_filters,
-            "ordering": ordering,
-            "search": search,
-            "genre_id": genre_id,
-        }
-
-        params_dict: dict[str, int | float | str] = {
-            key: value for key, value in query_params.items() if value is not None
-        }
-
-        prev_page_link = None
-        if page > 1:
-            params_dict["page"] = page - 1
-            additional_params = urlencode(params_dict)
-            prev_page_link = f"{router_path}?{additional_params}"
-
-        next_page_link = None
-        if page < total_pages:
-            params_dict["page"] = page + 1
-            additional_params = urlencode(params_dict)
-            next_page_link = f"{router_path}?{additional_params}"
-
-        return MovieListResponseSchema(
-            movies=[MovieBaseSchema.model_validate(movie) for movie in movies],
-            prev_page=prev_page_link,
-            next_page=next_page_link,
-            total_pages=total_pages,
-            total_items=total_items,
+            params=params,
+            not_found_message="No movies found on this page for the supplied filters and search.",
         )
 
     except HTTPException:
         raise
 
-    except Exception:
+    except Exception as error:
         logger.exception("Failed to load the movie catalog")
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to load the movie catalog. Please try again later.",
-        )
+        ) from error
 
 
 @router.get(
@@ -459,11 +180,13 @@ async def create_movie(
     try:
         movie = await create_movie_record(db=db, movie_data=movie_data)
         return MovieDetailSchema.model_validate(movie)
+
     except MovieAlreadyExistsError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
         )
+
     except Exception:
         logger.exception("Failed to create movie '%s'", movie_data.name)
 
