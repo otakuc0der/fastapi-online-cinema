@@ -20,6 +20,7 @@ from database.models.movies import (
     movie_directors,
     movie_genres,
     movie_stars,
+    user_favorite_movies,
 )
 from database.session_postgresql import (
     get_postgresql_db as get_db,

@@ -21,7 +21,7 @@ from security.passwords import hash_password, verify_password
 from services.utils import generate_secure_token
 
 if TYPE_CHECKING:
-    from database.models.movies import MovieReactionModel
+    from database.models.movies import MovieModel, MovieReactionModel
 
 
 class UserGroupEnum(str, Enum):
@@ -104,6 +104,11 @@ class UserModel(Base):
         "MovieReactionModel",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+
+    favorite_movies: Mapped[list["MovieModel"]] = relationship(
+        secondary="user_favorite_movies",
+        back_populates="favorited_by",
     )
 
     def __repr__(self):

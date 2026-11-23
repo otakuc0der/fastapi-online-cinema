@@ -26,6 +26,30 @@ if TYPE_CHECKING:
     from database.models.accounts import UserModel
 
 
+user_favorite_movies = Table(
+    "user_favorite_movies",
+    Base.metadata,
+    Column(
+        "movie_id",
+        Integer,
+        ForeignKey(
+            "movies.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey(
+            "users.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    ),
+)
+
+
 movie_stars = Table(
     "movie_stars",
     Base.metadata,
@@ -187,6 +211,11 @@ class MovieModel(Base):
         "MovieReactionModel",
         back_populates="movie",
         cascade="all, delete-orphan",
+    )
+
+    favorited_by: Mapped[list["UserModel"]] = relationship(
+        secondary=user_favorite_movies,
+        back_populates="favorite_movies",
     )
 
     __table_args__ = (
