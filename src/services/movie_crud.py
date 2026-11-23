@@ -12,6 +12,7 @@ from database import (
     GenreModel,
     MovieModel,
     StarModel,
+    user_favorite_movies,
 )
 from exceptions import MovieAlreadyExistsError
 from schemas import MovieCreateSchema, MovieUpdateSchema
@@ -74,6 +75,7 @@ def build_movie_query(
     certification: str | None = None,
     search: str | None = None,
     genre_id: int | None = None,
+    favorite_user_id: int | None = None,
 ) -> Select[tuple[MovieModel]]:
     """Combine movie filters with partial search across titles, descriptions and names."""
     query = select(MovieModel)
@@ -126,6 +128,18 @@ def build_movie_query(
     if genre_id is not None:
         query = query.where(MovieModel.genres.any(GenreModel.id == genre_id))
 
+    if favorite_user_id is not None:
+        favorite_movie_exists = (
+            select(user_favorite_movies.c.movie_id)
+            .exists()
+            .where(
+                user_favorite_movies.c.movie_id == MovieModel.id,
+                user_favorite_movies.c.user_id == favorite_user_id,
+            )
+        )
+
+        query = query.where(favorite_movie_exists)
+
     return query
 
 
@@ -143,6 +157,7 @@ async def get_movie_page(
     certification: str | None = None,
     search: str | None = None,
     genre_id: int | None = None,
+    favorite_user_id: int | None = None,
 ) -> list[MovieModel]:
     """Fetch a movie page matching filters and search with the supplied ordering."""
     query = build_movie_query(
@@ -155,6 +170,7 @@ async def get_movie_page(
         certification=certification,
         search=search,
         genre_id=genre_id,
+        favorite_user_id=favorite_user_id,
     )
 
     query = (
@@ -179,6 +195,7 @@ async def count_movies(
     certification: str | None = None,
     search: str | None = None,
     genre_id: int | None = None,
+    favorite_user_id: int | None = None,
 ) -> int:
     """Count movies matching filters and search before pagination."""
     query = build_movie_query(
@@ -191,6 +208,7 @@ async def count_movies(
         certification=certification,
         search=search,
         genre_id=genre_id,
+        favorite_user_id=favorite_user_id,
     )
 
     total_items = await db.scalar(select(func.count()).select_from(query.subquery()))
