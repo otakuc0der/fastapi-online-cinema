@@ -22,6 +22,12 @@ from schemas.genres import (
     GenreUpdateSchema,
 )
 from schemas.movie_favorites import MovieFavoriteResponseSchema
+from schemas.movie_ratings import (
+    MovieRatingCurrentResponseSchema,
+    MovieRatingRequestSchema,
+    MovieRatingResponseSchema,
+    MovieRatingSummarySchema,
+)
 from schemas.movie_reactions import (
     MovieReactionCurrentResponseSchema,
     MovieReactionRequestSchema,
