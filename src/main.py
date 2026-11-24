@@ -4,6 +4,7 @@ from routes import (
     account_router,
     genre_router,
     movie_favorite_router,
+    movie_rating_router,
     movie_reaction_router,
     movie_router,
     profile_router,
@@ -75,6 +76,12 @@ app.include_router(
 
 app.include_router(
     movie_router,
+    prefix=api_version_prefix,
+    tags=["movies"],
+)
+
+app.include_router(
+    movie_rating_router,
     prefix=api_version_prefix,
     tags=["movies"],
 )
