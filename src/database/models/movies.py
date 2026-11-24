@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     DECIMAL,
+    CheckConstraint,
     Column,
     Enum as SQLEnum,
     Float,
@@ -213,6 +214,12 @@ class MovieModel(Base):
         cascade="all, delete-orphan",
     )
 
+    ratings: Mapped[list["MovieRatingModel"]] = relationship(
+        "MovieRatingModel",
+        back_populates="movie",
+        cascade="all, delete-orphan",
+    )
+
     favorited_by: Mapped[list["UserModel"]] = relationship(
         secondary=user_favorite_movies,
         back_populates="favorite_movies",
@@ -277,4 +284,53 @@ class MovieReactionModel(Base):
             f"<MovieReactionModel(id={self.id}, "
             f"user_id={self.user_id}, movie_id={self.movie_id}, "
             f"reaction={self.reaction})>"
+        )
+
+
+class MovieRatingModel(Base):
+    __tablename__ = "movie_ratings"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rating: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    user: Mapped["UserModel"] = relationship(
+        "UserModel",
+        back_populates="ratings",
+    )
+    movie: Mapped["MovieModel"] = relationship(
+        "MovieModel",
+        back_populates="ratings",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "movie_id",
+            name="unique_user_movie_rating",
+        ),
+        CheckConstraint(
+            "rating >= 1 AND rating <= 10",
+            name="check_movie_rating",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<MovieRatingModel(id={self.id}, "
+            f"user_id={self.user_id}, movie_id={self.movie_id}, "
+            f"rating={self.rating})>"
         )

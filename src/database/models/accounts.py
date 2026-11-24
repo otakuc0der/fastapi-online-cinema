@@ -21,7 +21,11 @@ from security.passwords import hash_password, verify_password
 from services.utils import generate_secure_token
 
 if TYPE_CHECKING:
-    from database.models.movies import MovieModel, MovieReactionModel
+    from database.models.movies import (
+        MovieModel,
+        MovieRatingModel,
+        MovieReactionModel,
+    )
 
 
 class UserGroupEnum(str, Enum):
@@ -102,6 +106,12 @@ class UserModel(Base):
 
     reactions: Mapped[list["MovieReactionModel"]] = relationship(
         "MovieReactionModel",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    ratings: Mapped[list["MovieRatingModel"]] = relationship(
+        "MovieRatingModel",
         back_populates="user",
         cascade="all, delete-orphan",
     )
