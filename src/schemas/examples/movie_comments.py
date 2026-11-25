@@ -1,27 +1,25 @@
 from fastapi.openapi.models import Example
 
-from schemas.examples.security import moderator_error_responses
-
-movie_comment_create_example = {
+movie_comment_create_request_example = {
     "text": "Great performances and a memorable ending.",
 }
 
-movie_comment_update_example = {
-    "text": "Great performances, a memorable ending and an excellent soundtrack.",
+movie_comment_update_request_example = {
+    "text": "Great performances and an excellent soundtrack.",
 }
 
 movie_comment_response_example = {
     "id": 42,
     "user_id": 17,
     "movie_id": 1000,
-    "text": movie_comment_create_example["text"],
+    "text": "Great performances and a memorable ending.",
     "created_at": "2026-11-25T12:00:00Z",
     "updated_at": "2026-11-25T12:00:00Z",
 }
 
 movie_comment_updated_response_example = {
     **movie_comment_response_example,
-    "text": movie_comment_update_example["text"],
+    "text": "Great performances and an excellent soundtrack.",
     "updated_at": "2026-11-25T12:05:00Z",
 }
 
@@ -45,49 +43,42 @@ movie_comment_empty_list_response_example = {
 MOVIE_COMMENT_CREATE_REQUEST_EXAMPLES: dict[str, Example] = {
     "comment": Example(
         summary="Create a movie comment",
-        value=movie_comment_create_example,
+        value=movie_comment_create_request_example,
     ),
 }
 
 MOVIE_COMMENT_UPDATE_REQUEST_EXAMPLES: dict[str, Example] = {
     "comment": Example(
-        summary="Replace the comment text",
-        value=movie_comment_update_example,
+        summary="Update the comment text",
+        value=movie_comment_update_request_example,
     ),
 }
 
 
 MOVIE_COMMENT_AUTH_RESPONSES = {
-    401: moderator_error_responses[401],
-    403: {
-        "description": "The user account is inactive.",
-        "content": {
-            "application/json": {
-                "example": {
-                    "detail": "User account is not activated.",
-                },
-            },
-        },
+    401: {
+        "description": (
+            "Authentication is required. The Bearer access token is missing, "
+            "invalid or expired, or its user no longer exists."
+        ),
     },
 }
 
+MOVIE_COMMENT_INACTIVE_USER_RESPONSE = {
+    "description": "The authenticated user's account is not active.",
+}
 
-MOVIE_COMMENT_AUTHOR_ERROR_RESPONSE = {
+MOVIE_COMMENT_UPDATE_PERMISSION_RESPONSE = {
     "description": (
-        "The user account is inactive or the comment belongs to another user. "
-        "Moderator and administrator roles do not bypass author checks."
+        "The authenticated user's account is not active, or the user is not "
+        "the comment author. Moderators and administrators cannot edit "
+        "other users' comments."
     ),
     "content": {
         "application/json": {
             "examples": {
-                "inactive_account": {
-                    "summary": "The account is inactive",
-                    "value": {
-                        "detail": "User account is not activated.",
-                    },
-                },
-                "not_author": {
-                    "summary": "The user is not the comment author",
+                "permission_denied": {
+                    "summary": "Only the author can edit the comment",
                     "value": {
                         "detail": ("You don't have permission to modify this comment."),
                     },
@@ -97,35 +88,44 @@ MOVIE_COMMENT_AUTHOR_ERROR_RESPONSE = {
     },
 }
 
-
-MOVIE_COMMENT_MOVIE_NOT_FOUND_RESPONSE = {
-    "description": "The movie does not exist.",
+MOVIE_COMMENT_DELETE_PERMISSION_RESPONSE = {
+    "description": (
+        "The authenticated user's account is not active, or the user is "
+        "neither the comment author nor an administrator. Moderators cannot "
+        "delete other users' comments."
+    ),
     "content": {
         "application/json": {
-            "example": {
-                "detail": "Movie not found.",
+            "examples": {
+                "permission_denied": {
+                    "summary": (
+                        "Only the author or an administrator can delete " "the comment"
+                    ),
+                    "value": {
+                        "detail": ("You don't have permission to modify this comment."),
+                    },
+                },
             },
         },
     },
 }
 
-
 MOVIE_COMMENT_NOT_FOUND_RESPONSE = {
     "description": (
-        "The movie or comment does not exist. A comment belonging "
-        "to another movie is also treated as not found."
+        "The movie does not exist, the comment does not exist, "
+        "or the comment belongs to another movie."
     ),
     "content": {
         "application/json": {
             "examples": {
                 "movie_not_found": {
-                    "summary": "The movie does not exist",
+                    "summary": "Movie not found",
                     "value": {
                         "detail": "Movie not found.",
                     },
                 },
                 "comment_not_found": {
-                    "summary": "The comment does not exist in this movie",
+                    "summary": ("Comment not found or belongs to another movie"),
                     "value": {
                         "detail": "Movie comment not found.",
                     },
@@ -135,43 +135,42 @@ MOVIE_COMMENT_NOT_FOUND_RESPONSE = {
     },
 }
 
-
 MOVIE_COMMENT_MUTATION_NOT_FOUND_RESPONSE = {
     **MOVIE_COMMENT_NOT_FOUND_RESPONSE,
     "description": (
-        "The movie or comment does not exist, the comment belongs "
-        "to another movie, or the authenticated user no longer exists "
-        "when the operation is performed."
+        "The movie does not exist, the comment does not exist, "
+        "the comment belongs to another movie, or the authenticated "
+        "user was removed before the operation completed."
     ),
 }
-
 
 MOVIE_COMMENT_BODY_VALIDATION_RESPONSE = {
     "description": (
-        "Invalid path parameters or request body. IDs must be integers "
-        "greater than zero. Text is required and must be a string containing "
-        "1–2000 characters after trimming surrounding whitespace. "
-        "Empty text, whitespace-only text, null and unknown fields are rejected."
+        "Validation failed. Path IDs must be positive integers. "
+        "The request body must contain a text string with 1–2000 characters "
+        "after trimming surrounding whitespace. Missing text, null, "
+        "blank text and additional request fields are rejected."
     ),
 }
 
-
 MOVIE_COMMENT_PATH_VALIDATION_RESPONSE = {
-    "description": ("Movie ID and comment ID must be integers greater than zero."),
+    "description": (
+        "Validation failed. Movie ID and comment ID must be " "positive integers."
+    ),
 }
 
 
 LIST_MOVIE_COMMENTS_RESPONSES = {
     200: {
         "description": (
-            "A page of comments ordered from newest to oldest. "
-            "The first page may contain an empty list."
+            "Comment page with matching totals and relative navigation links. "
+            "An existing movie with no comments returns an empty first page."
         ),
         "content": {
             "application/json": {
                 "examples": {
-                    "comments": {
-                        "summary": "Comments with pagination",
+                    "comment_page": {
+                        "summary": "First page with more comments available",
                         "value": movie_comment_list_response_example,
                     },
                     "empty_first_page": {
@@ -184,20 +183,20 @@ LIST_MOVIE_COMMENTS_RESPONSES = {
     },
     404: {
         "description": (
-            "The movie does not exist, or a page greater than 1 "
-            "contains no comments."
+            "The movie does not exist, or the requested page is empty "
+            "and its number is greater than 1."
         ),
         "content": {
             "application/json": {
                 "examples": {
                     "movie_not_found": {
-                        "summary": "The movie does not exist",
+                        "summary": "Movie not found",
                         "value": {
                             "detail": "Movie not found.",
                         },
                     },
                     "empty_page": {
-                        "summary": "The requested page has no comments",
+                        "summary": "Empty page after the first page",
                         "value": {
                             "detail": ("No comments found on the requested page."),
                         },
@@ -208,12 +207,12 @@ LIST_MOVIE_COMMENTS_RESPONSES = {
     },
     422: {
         "description": (
-            "Movie ID and page must be integers greater than zero. "
+            "Validation failed. Movie ID and page must be positive integers. "
             "Per_page must be an integer from 1 to 20."
         ),
     },
     500: {
-        "description": "Movie comments could not be retrieved.",
+        "description": "An unexpected error prevented retrieving comments.",
         "content": {
             "application/json": {
                 "example": {
@@ -224,10 +223,9 @@ LIST_MOVIE_COMMENTS_RESPONSES = {
     },
 }
 
-
 GET_MOVIE_COMMENT_RESPONSES = {
     200: {
-        "description": "The requested movie comment.",
+        "description": "Comment text, author ID, movie ID and timestamps.",
         "content": {
             "application/json": {
                 "example": movie_comment_response_example,
@@ -237,7 +235,7 @@ GET_MOVIE_COMMENT_RESPONSES = {
     404: MOVIE_COMMENT_NOT_FOUND_RESPONSE,
     422: MOVIE_COMMENT_PATH_VALIDATION_RESPONSE,
     500: {
-        "description": "The movie comment could not be retrieved.",
+        "description": "An unexpected error prevented retrieving the comment.",
         "content": {
             "application/json": {
                 "example": {
@@ -248,27 +246,33 @@ GET_MOVIE_COMMENT_RESPONSES = {
     },
 }
 
-
 CREATE_MOVIE_COMMENT_RESPONSES = {
     **MOVIE_COMMENT_AUTH_RESPONSES,
     201: {
-        "description": "A new movie comment was created.",
+        "description": "Created comment with generated ID and timestamps.",
         "content": {
             "application/json": {
                 "example": movie_comment_response_example,
             },
         },
     },
+    403: MOVIE_COMMENT_INACTIVE_USER_RESPONSE,
     404: {
-        **MOVIE_COMMENT_MOVIE_NOT_FOUND_RESPONSE,
         "description": (
-            "The movie does not exist, or the authenticated user "
-            "no longer exists when the operation is performed."
+            "The movie does not exist, or the authenticated user was "
+            "removed before the operation completed."
         ),
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Movie not found.",
+                },
+            },
+        },
     },
     422: MOVIE_COMMENT_BODY_VALIDATION_RESPONSE,
     500: {
-        "description": "The movie comment could not be created.",
+        "description": "An unexpected error prevented creating the comment.",
         "content": {
             "application/json": {
                 "example": {
@@ -279,22 +283,21 @@ CREATE_MOVIE_COMMENT_RESPONSES = {
     },
 }
 
-
 UPDATE_MOVIE_COMMENT_RESPONSES = {
     **MOVIE_COMMENT_AUTH_RESPONSES,
     200: {
-        "description": "The comment with its updated text and timestamps.",
+        "description": "Comment with the updated text and timestamps.",
         "content": {
             "application/json": {
                 "example": movie_comment_updated_response_example,
             },
         },
     },
-    403: MOVIE_COMMENT_AUTHOR_ERROR_RESPONSE,
+    403: MOVIE_COMMENT_UPDATE_PERMISSION_RESPONSE,
     404: MOVIE_COMMENT_MUTATION_NOT_FOUND_RESPONSE,
     422: MOVIE_COMMENT_BODY_VALIDATION_RESPONSE,
     500: {
-        "description": "The movie comment could not be updated.",
+        "description": "An unexpected error prevented updating the comment.",
         "content": {
             "application/json": {
                 "example": {
@@ -305,17 +308,16 @@ UPDATE_MOVIE_COMMENT_RESPONSES = {
     },
 }
 
-
 DELETE_MOVIE_COMMENT_RESPONSES = {
     **MOVIE_COMMENT_AUTH_RESPONSES,
     204: {
-        "description": "The comment was deleted. No response body.",
+        "description": "Comment deleted successfully. No response body.",
     },
-    403: MOVIE_COMMENT_AUTHOR_ERROR_RESPONSE,
+    403: MOVIE_COMMENT_DELETE_PERMISSION_RESPONSE,
     404: MOVIE_COMMENT_MUTATION_NOT_FOUND_RESPONSE,
     422: MOVIE_COMMENT_PATH_VALIDATION_RESPONSE,
     500: {
-        "description": "The movie comment could not be deleted.",
+        "description": "An unexpected error prevented deleting the comment.",
         "content": {
             "application/json": {
                 "example": {
