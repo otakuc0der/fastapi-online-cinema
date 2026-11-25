@@ -1,5 +1,6 @@
 from routes.accounts import router as account_router
 from routes.genres import router as genre_router
+from routes.movie_comments import router as movie_comment_router
 from routes.movie_favorites import router as movie_favorite_router
 from routes.movie_ratings import router as movie_rating_router
 from routes.movie_reactions import router as movie_reaction_router

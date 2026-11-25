@@ -21,6 +21,12 @@ from schemas.genres import (
     GenreSchema,
     GenreUpdateSchema,
 )
+from schemas.movie_comments import (
+    MovieCommentCreateSchema,
+    MovieCommentListResponseSchema,
+    MovieCommentResponseSchema,
+    MovieCommentUpdateSchema,
+)
 from schemas.movie_favorites import MovieFavoriteResponseSchema
 from schemas.movie_ratings import (
     MovieRatingCurrentResponseSchema,

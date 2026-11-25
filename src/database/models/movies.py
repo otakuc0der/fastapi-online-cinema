@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
@@ -9,6 +10,7 @@ from sqlalchemy import (
     DECIMAL,
     CheckConstraint,
     Column,
+    DateTime,
     Enum as SQLEnum,
     Float,
     ForeignKey,
@@ -18,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -220,6 +223,12 @@ class MovieModel(Base):
         cascade="all, delete-orphan",
     )
 
+    comments: Mapped[list["MovieCommentModel"]] = relationship(
+        "MovieCommentModel",
+        back_populates="movie",
+        cascade="all, delete-orphan",
+    )
+
     favorited_by: Mapped[list["UserModel"]] = relationship(
         secondary=user_favorite_movies,
         back_populates="favorite_movies",
@@ -333,4 +342,54 @@ class MovieRatingModel(Base):
             f"<MovieRatingModel(id={self.id}, "
             f"user_id={self.user_id}, movie_id={self.movie_id}, "
             f"rating={self.rating})>"
+        )
+
+
+class MovieCommentModel(Base):
+    __tablename__ = "movie_comments"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user: Mapped["UserModel"] = relationship(
+        "UserModel",
+        back_populates="comments",
+    )
+    movie: Mapped["MovieModel"] = relationship(
+        "MovieModel",
+        back_populates="comments",
+    )
+
+    def __repr__(self) -> str:
+        comment_content = self.text
+
+        if len(comment_content) > 30:
+            comment_content = comment_content[:30] + "..."
+
+        return (
+            f"<MovieCommentModel(id={self.id}, "
+            f"user_id={self.user_id}, movie_id={self.movie_id}, "
+            f"comment={comment_content!r})>"
         )
