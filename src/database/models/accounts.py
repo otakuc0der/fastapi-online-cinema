@@ -22,6 +22,7 @@ from services.utils import generate_secure_token
 
 if TYPE_CHECKING:
     from database.models.movies import (
+        MovieCommentModel,
         MovieModel,
         MovieRatingModel,
         MovieReactionModel,
@@ -112,6 +113,12 @@ class UserModel(Base):
 
     ratings: Mapped[list["MovieRatingModel"]] = relationship(
         "MovieRatingModel",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    comments: Mapped[list["MovieCommentModel"]] = relationship(
+        "MovieCommentModel",
         back_populates="user",
         cascade="all, delete-orphan",
     )

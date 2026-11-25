@@ -13,6 +13,7 @@ from database.models.movies import (
     CertificationModel,
     DirectorModel,
     GenreModel,
+    MovieCommentModel,
     MovieModel,
     MovieRatingModel,
     MovieReactionEnum,
